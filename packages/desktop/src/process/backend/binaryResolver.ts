@@ -150,9 +150,13 @@ function resolveFromSystemPATH(diagnostics: BackendBinaryResolveDiagnostics): st
     const result = execSync(diagnostics.pathLookupCommand, { encoding: 'utf-8', timeout: 5000 }).trim();
     diagnostics.pathLookupResult = trimLookupText(result);
     const firstMatch = result.split(/\r?\n/).find((line) => line.trim());
+    // 打印日志
+    console.log(`System PATH lookup result for "${diagnostics.binaryName}": ${diagnostics.pathLookupResult}`);
     if (firstMatch && existsSync(firstMatch.trim())) return firstMatch.trim();
   } catch (error) {
     diagnostics.pathLookupError = error instanceof Error ? trimLookupText(error.message) : String(error);
+    // 打印日志
+    console.error(`Error occurred while looking up binary in PATH: ${diagnostics.pathLookupError}`);
     return null;
   }
   return null;
