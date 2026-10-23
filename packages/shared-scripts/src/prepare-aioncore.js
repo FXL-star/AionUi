@@ -2,10 +2,11 @@
  * Prepare aioncore binary for packaging.
  *
  * Resolution order:
- *  1. GitHub Actions artifact download when AIONUI_BACKEND_RUN_ID is set
- *  2. GitHub release download (requires version or defaults to "latest")
- *  3. Complete local bundle from AIONUI_BACKEND_LOCAL_BUNDLE_DIR
- *  4. Local binary fallback from AIONUI_BACKEND_LOCAL_BINARY
+ *  1. Source build when AIONUI_BACKEND_SOURCE_DIR is set
+ *  2. Complete local bundle from AIONUI_BACKEND_LOCAL_BUNDLE_DIR
+ *  3. GitHub Actions artifact download when AIONUI_BACKEND_RUN_ID is set
+ *  4. GitHub release download (requires version or defaults to "latest")
+ *  5. Local binary fallback from AIONUI_BACKEND_LOCAL_BINARY
  *
  * Output: {projectRoot}/resources/bundled-aioncore/{platform}-{arch}/
  *   - aioncore[.exe]
@@ -152,6 +153,108 @@ function verifyPreparedAioncoreBundle(projectRoot, platform, arch) {
 // ---------------------------------------------------------------------------
 // Source resolvers
 // ---------------------------------------------------------------------------
+
+function prepareAioncoreFromSource({ projectRoot, platform, arch, sourceDir }) {
+  if (platform !== process.platform || arch !== process.arch) {
+    throw new Error(
+      `AionCore source builds require the host target ${process.platform}-${process.arch}; requested ${platform}-${arch}. Use a prebuilt bundle for cross-platform or cross-architecture packaging.`
+    );
+  }
+
+  const targets = {
+    'win32-x64': 'x86_64-pc-windows-msvc',
+    'win32-arm64': 'aarch64-pc-windows-msvc',
+    'darwin-x64': 'x86_64-apple-darwin',
+    'darwin-arm64': 'aarch64-apple-darwin',
+    'linux-x64': 'x86_64-unknown-linux-gnu',
+    'linux-arm64': 'aarch64-unknown-linux-gnu',
+  };
+  const runtimeKey = `${platform}-${arch}`;
+  const target = targets[runtimeKey];
+  if (!target) throw new Error(`Unsupported AionCore source build target: ${runtimeKey}`);
+
+  const resolvedSourceDir = path.resolve(projectRoot, sourceDir);
+  const wrapperPath = path.join(resolvedSourceDir, 'scripts', 'just', platform === 'win32' ? 'cargo.ps1' : 'cargo.sh');
+  if (!fs.existsSync(path.join(resolvedSourceDir, 'Cargo.toml')) || !fs.existsSync(wrapperPath)) {
+    throw new Error(`AIONUI_BACKEND_SOURCE_DIR must point to an AionCore source checkout: ${resolvedSourceDir}`);
+  }
+
+  console.log(`Preparing aioncore for ${runtimeKey} from source: ${resolvedSourceDir}`);
+  const commandOptions = {
+    cwd: resolvedSourceDir,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+    maxBuffer: 64 * 1024 * 1024,
+    env: process.env,
+  };
+  const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--no-deps', '--format-version=1'], commandOptions));
+  const appPackage = metadata.packages.find(
+    (pkg) =>
+      pkg.name === 'aionui-app' && pkg.targets.some((entry) => entry.name === 'aioncore' && entry.kind.includes('bin'))
+  );
+  if (!appPackage) throw new Error(`AionCore source checkout has no aionui-app/aioncore binary: ${resolvedSourceDir}`);
+
+  // Use the backend's Cargo wrapper to honor AIONRS without running lint-fix or fmt.
+  // An explicit target prevents Cargo config overrides from packaging the wrong architecture.
+  const buildArgs = [
+    'build',
+    '--release',
+    '--package',
+    'aionui-app',
+    '--bin',
+    'aioncore',
+    '--target',
+    target,
+    '--message-format=json-render-diagnostics',
+  ];
+  const command = platform === 'win32' ? 'powershell.exe' : 'bash';
+  const wrapperArgs =
+    platform === 'win32'
+      ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', wrapperPath]
+      : [wrapperPath];
+  console.log(`  Compiling AionCore ${appPackage.version} (release, ${target})...`);
+  const output = execFileSync(command, [...wrapperArgs, ...buildArgs], commandOptions);
+  let binaryPath = null;
+  for (const line of output.split(/\r?\n/)) {
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (
+      message.reason === 'compiler-artifact' &&
+      message.package_id === appPackage.id &&
+      message.target?.name === 'aioncore' &&
+      message.executable
+    ) {
+      binaryPath = message.executable;
+    }
+  }
+  if (!binaryPath || !fs.existsSync(binaryPath)) {
+    throw new Error(`AionCore source build did not produce an aioncore executable: ${resolvedSourceDir}`);
+  }
+
+  const targetDir = path.join(projectRoot, 'resources', 'bundled-aioncore', runtimeKey);
+  const binaryName = getBinaryName(platform);
+  const targetBinaryPath = path.join(targetDir, binaryName);
+  removeDirectorySafe(targetDir);
+  copyFileSafe(binaryPath, targetBinaryPath);
+  ensureExecutableMode(targetBinaryPath);
+  prepareManagedResources(targetBinaryPath, targetDir);
+  writeJson(path.join(targetDir, 'manifest.json'), {
+    platform,
+    arch,
+    version: `v${appPackage.version}`,
+    generatedAt: new Date().toISOString(),
+    sourceType: 'local-source',
+    source: { path: resolvedSourceDir, binaryPath, target },
+    files: [binaryName, 'managed-resources/'],
+  });
+  verifyPreparedAioncoreBundle(projectRoot, platform, arch);
+  console.log(`  Bundled aioncore prepared from source: ${targetDir}`);
+  return { prepared: true, dir: targetDir, sourceType: 'local-source' };
+}
 
 /**
  * Resolve the actual version tag when "latest" is requested.
@@ -442,6 +545,11 @@ function downloadAndExtract(platform, arch, tag) {
  */
 function prepareAioncore(options) {
   const { projectRoot, platform, arch, version = 'latest' } = options;
+  const sourceDir = (process.env.AIONUI_BACKEND_SOURCE_DIR || '').trim();
+  if (sourceDir) {
+    // Source build errors must abort packaging, never silently fall back to a release.
+    return prepareAioncoreFromSource({ projectRoot, platform, arch, sourceDir });
+  }
   const runtimeKey = `${platform}-${arch}`;
   const actionsRunId = (process.env.AIONUI_BACKEND_RUN_ID || '').trim();
 

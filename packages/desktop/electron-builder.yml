@@ -1,12 +1,21 @@
-appId: com.aionui.app
-productName: AionUi
+# appId: com.aionui.app
+# productName: AionUi
+# executableName: AionUi
+# copyright: Copyright © 2024 AionUi
+
+# protocols:
+#   - name: AionUi Protocol
+#     schemes:
+#       - aionui
+appId: com.tsclaw.app   # 示例，按你的应用标识确定
+productName: Tsclaw
 executableName: AionUi
-copyright: Copyright © 2024 AionUi
+copyright: Copyright © 2026 Tsclaw
 
 protocols:
-  - name: AionUi Protocol
+  - name: Tsclaw Protocol
     schemes:
-      - aionui
+      - tsclaw
 
 asar:
   smartUnpack: true

@@ -170,6 +170,32 @@ Use the Rust MSVC toolchain and install Microsoft C++ Build Tools. After install
 | `bun run build-deb`       | Build Linux (.deb) distributable                        |
 | `bun run build`           | Alias for `bun run build-mac`                           |
 
+### Package with a Local AionCore Source Checkout
+
+Set `AIONUI_BACKEND_SOURCE_DIR` to build AionCore from source during backend preparation. Relative paths resolve from the AionUi project root. For sibling checkouts on Windows:
+
+```powershell
+cd D:\code\Aion\AionUi
+$env:AIONUI_BACKEND_SOURCE_DIR = '..\AionCore'
+bun run build-win:x64
+```
+
+The packaging script compiles `aionui-app`'s `aioncore` binary in release mode through AionCore's Cargo wrapper, then runs `prepare-managed-resources`, verifies the exported resources, and writes the bundle to `resources/bundled-aioncore/win32-x64/`. Cargo uses incremental build caches on subsequent runs. `AIONRS`, if set, is passed through for local SDK development; use an absolute SDK path because compilation runs in the AionCore directory.
+
+Install the Rust toolchain pinned by AionCore's `rust-toolchain.toml` and Microsoft C++ Build Tools with the Windows SDK. Dependencies and managed resources may still need network access. Source builds only support packaging for the host platform and architecture; use prebuilt bundles for other targets. Build or resource preparation failures stop packaging without falling back to a downloaded backend. The source package version is recorded in the bundle manifest; the frontend's `aioncoreVersion` release pin is ignored in source mode.
+
+To verify backend preparation separately:
+
+```powershell
+node scripts/prepareAioncore.js
+```
+
+Unset the option to return to the default download flow:
+
+```powershell
+Remove-Item Env:AIONUI_BACKEND_SOURCE_DIR
+```
+
 ### Standalone Server (non-Electron)
 
 | Command                            | Description                                                 |

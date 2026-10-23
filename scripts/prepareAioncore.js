@@ -10,6 +10,8 @@
  *  4. 'latest' (fallback; not recommended for reproducible builds)
  *
  * Environment variables:
+ *  - AIONUI_BACKEND_SOURCE_DIR: build a local AionCore checkout instead of downloading
+ *    (relative to project root; requires the native host platform/architecture)
  *  - AIONUI_BACKEND_RUN_ID: AionCore Manual Build workflow run id
  *  - AIONUI_BACKEND_VERSION: override the pinned version
  *  - AIONUI_BACKEND_ARCH: target architecture (default: process.arch)

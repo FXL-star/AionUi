@@ -465,8 +465,12 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
       const iconFile = process.platform === 'win32' ? 'app.ico' : 'app_dev.png';
       const iconPath = path.join(process.cwd(), 'resources', iconFile);
       if (fs.existsSync(iconPath)) {
+        console.log(`[AionUi] Loading development icon from ${iconPath}`);
         devIcon = nativeImage.createFromPath(iconPath);
-        if (devIcon.isEmpty()) devIcon = undefined;
+        if (devIcon.isEmpty()) {
+          console.warn('[AionUi] Development icon is empty, ignoring');
+          devIcon = undefined;
+        }
       }
     } catch {
       // Ignore icon loading errors in development
@@ -488,14 +492,14 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
     // Custom titlebar configuration / 自定义标题栏配置
     ...(process.platform === 'darwin'
       ? {
-          titleBarStyle: 'hidden',
-          // Align traffic-light vertical center with the titlebar button centers.
-          // Titlebar is 45px; buttons are 36px flex-centered → button center y≈22.5.
-          // Empirically y=13 places the traffic lights on the same horizontal line
-          // as the sidebar / back / forward icons.
-          // NOTE: requires a full app restart to take effect (BrowserWindow option).
-          trafficLightPosition: { x: 10, y: 13 },
-        }
+        titleBarStyle: 'hidden',
+        // Align traffic-light vertical center with the titlebar button centers.
+        // Titlebar is 45px; buttons are 36px flex-centered → button center y≈22.5.
+        // Empirically y=13 places the traffic lights on the same horizontal line
+        // as the sidebar / back / forward icons.
+        // NOTE: requires a full app restart to take effect (BrowserWindow option).
+        trafficLightPosition: { x: 10, y: 13 },
+      }
       : { frame: false }),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

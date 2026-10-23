@@ -17,6 +17,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(__dirname, '../../..');
@@ -49,6 +50,90 @@ function resolveAppBuilderInstallUtil(): string {
 }
 
 describe('build-with-builder', () => {
+  it('rebuilds the packaged native module for the requested Electron version when prebuild download fails', () => {
+    const calls: Array<{ args: string[]; cwd: string }> = [];
+    const sandbox = {
+      module: { exports: {} as Record<string, (...args: unknown[]) => unknown> },
+      process,
+      __dirname: resolve(repoRoot, 'scripts'),
+      console: { log() {}, error() {} },
+      require: (name: string) => {
+        if (name === 'path') return { resolve };
+        if (name === 'fs') return {};
+        if (name === 'child_process') {
+          return {
+            spawnSync: () => ({ status: 1 }),
+            execFileSync: (_command: string, args: string[], options: { cwd: string }) => {
+              calls.push({ args, cwd: options.cwd });
+              if (args.includes('prebuild-install')) throw new Error('No prebuilt binaries found');
+            },
+          };
+        }
+        throw new Error(`Unexpected dependency: ${name}`);
+      },
+    };
+    runInNewContext(readFileSync(resolve(repoRoot, 'scripts/rebuildNativeModules.js'), 'utf8'), sandbox);
+    const moduleRoot = resolve(repoRoot, 'out/win-unpacked/resources/app.asar.unpacked/node_modules/better-sqlite3');
+
+    const success = sandbox.module.exports.rebuildSingleModule({
+      moduleName: 'better-sqlite3',
+      moduleRoot,
+      platform: 'win32',
+      arch: 'x64',
+      buildArch: 'x64',
+      electronVersion: '44.9.1',
+      projectRoot: repoRoot,
+    });
+
+    expect(success).toBe(true);
+    expect(calls[1].args).toEqual([
+      '--yes',
+      'electron-rebuild',
+      '--only',
+      'better-sqlite3',
+      '--force',
+      '--version=44.9.1',
+      '--module-dir',
+      moduleRoot,
+      '--arch=x64',
+    ]);
+  });
+
+  it('reports a failed native rebuild instead of accepting an incompatible existing binary', () => {
+    const sandbox = {
+      module: { exports: {} as Record<string, (...args: unknown[]) => unknown> },
+      process,
+      __dirname: resolve(repoRoot, 'scripts'),
+      console: { log() {}, error() {} },
+      require: (name: string) => {
+        if (name === 'path') return { resolve };
+        if (name === 'fs') return {};
+        if (name === 'child_process') {
+          return {
+            spawnSync: () => ({ status: 1 }),
+            execFileSync: () => {
+              throw new Error('Compiler unavailable');
+            },
+          };
+        }
+        throw new Error(`Unexpected dependency: ${name}`);
+      },
+    };
+    runInNewContext(readFileSync(resolve(repoRoot, 'scripts/rebuildNativeModules.js'), 'utf8'), sandbox);
+
+    expect(
+      sandbox.module.exports.rebuildSingleModule({
+        moduleName: 'better-sqlite3',
+        moduleRoot: resolve(repoRoot, 'out/win-unpacked/resources/app.asar.unpacked/node_modules/better-sqlite3'),
+        platform: 'win32',
+        arch: 'x64',
+        buildArch: 'x64',
+        electronVersion: '44.9.1',
+        projectRoot: repoRoot,
+      })
+    ).toBe(false);
+  });
+
   it('rejects skip-vite when renderer output is only a source html shell', () => {
     const outDir = resolve(repoRoot, 'out');
     const backupOutDir = resolve(repoRoot, `.tmp-out-backup-${process.pid}-${Date.now()}`);
