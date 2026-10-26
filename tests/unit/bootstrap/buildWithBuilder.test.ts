@@ -6,6 +6,7 @@
 
 import { spawnSync } from 'node:child_process';
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -18,9 +19,113 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const repoRoot = resolve(__dirname, '../../..');
+
+const archiveRenameFixture = `async function extractArchive(fs, tmpDir, dir) {
+        await fs.rename(tmpDir, dir);
+}`;
+
+function patchArchiveRename(source = archiveRenameFixture, platform = 'win32'): string {
+  let patched = source;
+  const script = readFileSync(resolve(repoRoot, 'scripts/build-with-builder.js'), 'utf8');
+  runInNewContext(
+    `${script.split('// Parse command line arguments')[0]}\npatchElectronBuilderArchiveRename('builder');`,
+    {
+      __dirname: resolve(repoRoot, 'scripts'),
+      process: { platform },
+      console: { log() {} },
+      require: (name: string) => {
+        if (name === 'path') return { join };
+        if (name === 'fs') {
+          return {
+            readFileSync: () => source,
+            writeFileSync: (_file: string, content: string) => {
+              patched = content;
+            },
+          };
+        }
+        if (name === 'child_process' || name === 'crypto') return {};
+        throw new Error(`Unexpected dependency: ${name}`);
+      },
+    }
+  );
+  return patched;
+}
+
+function runArchiveRename(rename: (from: string, to: string) => Promise<void>, delays: number[] = []): Promise<void> {
+  return runInNewContext(`${patchArchiveRename()}\nextractArchive(fs, 'output.tmp', 'output');`, {
+    fs: { rename },
+    process: { platform: 'win32' },
+    builder_util_1: { log: { warn() {} } },
+    setTimeout: (callback: () => void, delay: number) => {
+      delays.push(delay);
+      callback();
+    },
+  }) as Promise<void>;
+}
+
+describe('Windows archive extraction rename', () => {
+  it.each(['EPERM', 'EACCES', 'EBUSY'])('finishes after a temporary %s lock is released', async (code) => {
+    const rename = vi
+      .fn<(from: string, to: string) => Promise<void>>()
+      .mockRejectedValueOnce(Object.assign(new Error('Directory is busy'), { code }))
+      .mockResolvedValue(undefined);
+    const delays: number[] = [];
+
+    await runArchiveRename(rename, delays);
+
+    expect(rename).toHaveBeenCalledTimes(2);
+    expect(rename).toHaveBeenLastCalledWith('output.tmp', 'output');
+    expect(delays).toEqual([500]);
+  });
+
+  it('preserves the original failure after bounded retries for a persistent lock', async () => {
+    const error = Object.assign(new Error('Directory remains locked'), { code: 'EPERM' });
+    const rename = vi.fn().mockRejectedValue(error);
+    const delays: number[] = [];
+
+    await expect(runArchiveRename(rename, delays)).rejects.toBe(error);
+
+    expect(rename).toHaveBeenCalledTimes(11);
+    expect(delays).toEqual([500, 1000, 1500, 2000, 2000, 2000, 2000, 2000, 2000, 2000]);
+  });
+
+  it.each(['ENOENT', 'ENOTEMPTY', 'EIO'])('immediately propagates unrelated %s failures', async (code) => {
+    const error = Object.assign(new Error('Rename failed'), { code });
+    const rename = vi.fn().mockRejectedValue(error);
+    const delays: number[] = [];
+
+    await expect(runArchiveRename(rename, delays)).rejects.toBe(error);
+
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(delays).toEqual([]);
+  });
+
+  it('does not delay an uncontended rename', async () => {
+    const rename = vi.fn().mockResolvedValue(undefined);
+    const delays: number[] = [];
+
+    await runArchiveRename(rename, delays);
+
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(delays).toEqual([]);
+  });
+
+  it('can patch the dependency repeatedly without nesting retry loops', () => {
+    const patched = patchArchiveRename();
+    expect(patchArchiveRename(patched)).toBe(patched);
+  });
+
+  it('leaves non-Windows installations unchanged', () => {
+    expect(patchArchiveRename(archiveRenameFixture, 'darwin')).toBe(archiveRenameFixture);
+  });
+
+  it('reports an incompatible dependency instead of silently skipping the fix', () => {
+    expect(() => patchArchiveRename('async function extractArchive() {}')).toThrow('archive extraction changed');
+  });
+});
 
 function readInstallerErrorDefinitions(): Array<{ defineName: string; code: string }> {
   const source = readFileSync(resolve(repoRoot, 'resources/windows/installer-errors-sentry.nsh'), 'utf8');
@@ -58,8 +163,8 @@ describe('build-with-builder', () => {
       __dirname: resolve(repoRoot, 'scripts'),
       console: { log() {}, error() {} },
       require: (name: string) => {
-        if (name === 'path') return { resolve };
-        if (name === 'fs') return {};
+        if (name === 'path') return { resolve, join };
+        if (name === 'fs') return { existsSync: () => true, cpSync() {} };
         if (name === 'child_process') {
           return {
             spawnSync: () => ({ status: 1 }),
@@ -106,8 +211,8 @@ describe('build-with-builder', () => {
       __dirname: resolve(repoRoot, 'scripts'),
       console: { log() {}, error() {} },
       require: (name: string) => {
-        if (name === 'path') return { resolve };
-        if (name === 'fs') return {};
+        if (name === 'path') return { resolve, join };
+        if (name === 'fs') return { existsSync: () => true, cpSync() {} };
         if (name === 'child_process') {
           return {
             spawnSync: () => ({ status: 1 }),
@@ -132,6 +237,84 @@ describe('build-with-builder', () => {
         projectRoot: repoRoot,
       })
     ).toBe(false);
+  });
+
+  it('restores filtered compilation inputs before rebuilding the packaged native module', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'aionui-native-inputs-'));
+    const sourceRoot = join(tempDir, 'node_modules/better-sqlite3');
+    const moduleRoot = join(tempDir, 'out/node_modules/better-sqlite3');
+    mkdirSync(join(sourceRoot, 'src'), { recursive: true });
+    mkdirSync(moduleRoot, { recursive: true });
+    writeFileSync(join(sourceRoot, 'binding.gyp'), '{"targets":[]}');
+    writeFileSync(join(sourceRoot, 'src/better_sqlite3.h'), '// native header');
+    const sandbox = {
+      module: { exports: {} as Record<string, (...args: unknown[]) => unknown> },
+      process,
+      __dirname: resolve(repoRoot, 'scripts'),
+      console: { log() {}, error() {} },
+      require: (name: string) => {
+        if (name === 'path') return { resolve, join };
+        if (name === 'fs') return { existsSync, cpSync };
+        if (name === 'child_process') {
+          return {
+            spawnSync: () => ({ status: 1 }),
+            execFileSync: (_command: string, args: string[]) => {
+              if (args.includes('prebuild-install')) throw new Error('No prebuilt binaries found');
+              // Fail if the actual compiler would receive incomplete sources.
+              readFileSync(join(moduleRoot, 'binding.gyp'));
+              readFileSync(join(moduleRoot, 'src/better_sqlite3.h'));
+            },
+          };
+        }
+        throw new Error(`Unexpected dependency: ${name}`);
+      },
+    };
+    try {
+      runInNewContext(readFileSync(resolve(repoRoot, 'scripts/rebuildNativeModules.js'), 'utf8'), sandbox);
+      expect(
+        sandbox.module.exports.rebuildSingleModule({
+          moduleName: 'better-sqlite3',
+          moduleRoot,
+          projectRoot: tempDir,
+          platform: 'win32',
+          arch: 'x64',
+          buildArch: 'x64',
+          electronVersion: '37.10.3',
+        })
+      ).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a source rebuild when binding.gyp cannot be restored', () => {
+    const execFileSync = vi.fn();
+    const sandbox = {
+      module: { exports: {} as Record<string, (...args: unknown[]) => unknown> },
+      process,
+      __dirname: resolve(repoRoot, 'scripts'),
+      console: { log() {}, error() {} },
+      require: (name: string) => {
+        if (name === 'path') return { resolve, join };
+        if (name === 'fs') return { existsSync: () => false };
+        if (name === 'child_process') return { spawnSync: () => ({ status: 1 }), execFileSync };
+        throw new Error(`Unexpected dependency: ${name}`);
+      },
+    };
+    runInNewContext(readFileSync(resolve(repoRoot, 'scripts/rebuildNativeModules.js'), 'utf8'), sandbox);
+
+    expect(
+      sandbox.module.exports.rebuildSingleModule({
+        moduleName: 'better-sqlite3',
+        moduleRoot: resolve(repoRoot, 'out/node_modules/better-sqlite3'),
+        platform: 'win32',
+        arch: 'x64',
+        buildArch: 'x64',
+        electronVersion: '37.10.3',
+        forceRebuild: true,
+      })
+    ).toBe(false);
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it('rejects skip-vite when renderer output is only a source html shell', () => {

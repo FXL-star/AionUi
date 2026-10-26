@@ -279,6 +279,26 @@ prek run
 prek run --from-ref origin/main --to-ref HEAD
 ```
 
+## Build Desktop
+```bash
+# If you are unable to download Electron resources due to network issues, please configure a network proxy.
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+$env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
+# if use local updated backend version, run the command
+$env:AIONUI_BACKEND_SOURCE_DIR = '..\AionCore'
+# Install prek
+npm install -g @j178/prek
+
+# Install git hooks (optional, auto-check before commit)
+prek install
+
+# Run checks on staged files
+prek run
+
+# Run checks on changes vs main (same as CI)
+prek run --from-ref origin/main --to-ref HEAD
+```
+
 ## Build System
 
 AionUi uses **electron-vite** for fast bundling:

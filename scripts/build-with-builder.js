@@ -28,7 +28,7 @@ const DMG_RETRY_DELAY_SEC = 30;
 const INCREMENTAL_CACHE_FILE = 'out/.build-hash';
 const DEBUG_AUTO_UPDATE_CURRENT_VERSION_ENV = 'AIONUI_DEBUG_AUTO_UPDATE_CURRENT_VERSION';
 
-function patchElectronBuilderNsisInstaller() {
+function resolveAppBuilderDir() {
   const rootDir = path.resolve(__dirname, '..');
   // Resolve app-builder-lib inside THIS repo first. require.resolve walks up
   // parent directories, so in a git worktree (whose bun install has no
@@ -54,11 +54,50 @@ function patchElectronBuilderNsisInstaller() {
     try {
       appBuilderDir = path.dirname(require.resolve('app-builder-lib/package.json'));
     } catch (error) {
-      console.warn(`Warning: app-builder-lib is not resolvable; skipping NSIS template patch: ${error.message}`);
-      return;
+      throw new Error(`app-builder-lib is not resolvable: ${error.message}`);
     }
   }
 
+  return appBuilderDir;
+}
+
+function patchElectronBuilderArchiveRename(appBuilderDir) {
+  if (process.platform !== 'win32') return;
+
+  // electron-builder 26.15.2 renames the extracted directory with fs/promises,
+  // which does not retry when a Windows scanner briefly holds a file open.
+  // Keep the extraction lock held and retry only the final rename, not the build.
+  const electronGetPath = path.join(appBuilderDir, 'out', 'util', 'electronGet.js');
+  const original = fs.readFileSync(electronGetPath, 'utf8');
+  const marker = '// AionUi: retry transient Windows archive rename failures.';
+  if (original.includes(marker)) return;
+
+  const renameStatement = '        await fs.rename(tmpDir, dir);';
+  if (original.split(renameStatement).length !== 2) {
+    throw new Error('electron-builder archive extraction changed; update patchElectronBuilderArchiveRename.');
+  }
+
+  const replacement = [
+    `        ${marker}`,
+    '        for (let renameAttempt = 0; ; renameAttempt++) {',
+    '            try {',
+    '                await fs.rename(tmpDir, dir);',
+    '                break;',
+    '            } catch (error) {',
+    '                if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code) || renameAttempt >= 10) {',
+    '                    throw error;',
+    '                }',
+    '                builder_util_1.log.warn({ from: tmpDir, to: dir, code: error.code, attempt: renameAttempt + 1 }, "Windows archive directory is busy; retrying rename");',
+    '                await new Promise(resolve => setTimeout(resolve, Math.min(500 * (renameAttempt + 1), 2000)));',
+    '            }',
+    '        }',
+  ].join(original.includes('\r\n') ? '\r\n' : '\n');
+
+  fs.writeFileSync(electronGetPath, original.replace(renameStatement, replacement));
+  console.log('Patched electron-builder Windows archive rename retry.');
+}
+
+function patchElectronBuilderNsisInstaller(appBuilderDir) {
   const installUtilPath = path.join(appBuilderDir, 'templates', 'nsis', 'include', 'installUtil.nsh');
   if (!fs.existsSync(installUtilPath)) {
     console.warn(`Warning: electron-builder NSIS installUtil.nsh not found: ${installUtilPath}`);
@@ -859,7 +898,9 @@ try {
 
   const isWindowsBuild = builderArgs.includes('--win') || builderArgs.includes('--all');
   if (isWindowsBuild) {
-    patchElectronBuilderNsisInstaller();
+    const appBuilderDir = resolveAppBuilderDir();
+    patchElectronBuilderArchiveRename(appBuilderDir);
+    patchElectronBuilderNsisInstaller(appBuilderDir);
     cleanupWindowsPackOutput();
   }
 

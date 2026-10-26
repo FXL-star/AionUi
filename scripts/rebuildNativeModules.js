@@ -287,6 +287,22 @@ function rebuildSingleModule(options) {
   }
 
   try {
+    // electron-builder omits binding.gyp and headers from packaged dependencies.
+    // Restore compilation inputs before rebuilding the packaged copy; otherwise
+    // electron-rebuild reports success with "No native modules found".
+    const sourceModuleRoot = path.resolve(projectRoot, 'node_modules', moduleName);
+    if (sourceModuleRoot !== path.resolve(moduleRoot)) {
+      for (const entry of ['binding.gyp', 'src', 'deps']) {
+        const sourcePath = path.join(sourceModuleRoot, entry);
+        if (fs.existsSync(sourcePath)) {
+          fs.cpSync(sourcePath, path.join(moduleRoot, entry), { recursive: true, force: true });
+        }
+      }
+    }
+    if (!fs.existsSync(path.join(moduleRoot, 'binding.gyp'))) {
+      throw new Error(`Native build inputs are missing for ${moduleName}: ${moduleRoot}`);
+    }
+
     env.npm_config_build_from_source = 'true';
     const rebuildArgs = [
       '--yes',
@@ -294,7 +310,9 @@ function rebuildSingleModule(options) {
       '--only',
       moduleName,
       '--force',
-      `--platform=${platform}`,
+      `--version=${electronVersion}`,
+      '--module-dir',
+      moduleRoot,
       `--arch=${targetArch}`,
     ];
 
