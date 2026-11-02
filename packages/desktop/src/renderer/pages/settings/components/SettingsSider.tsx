@@ -13,7 +13,7 @@ import {
   Lightning,
   LinkCloud,
   Puzzle,
-  Speed,
+  // Speed,
   System,
   Toolkit,
 } from '@icon-park/react';
@@ -26,7 +26,7 @@ import { getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 
 /** Builtin settings tab IDs in display order (must match router paths). */
 export const BUILTIN_TAB_IDS = [
-  'agent',
+  // 'agent',
   'model',
   'skills',
   'tools',
@@ -55,7 +55,8 @@ export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
  * Extension tabs anchored between these builtins inherit the enclosing group visually.
  */
 const GROUP_HEADER_BEFORE: Record<string, string> = {
-  agent: 'settings.groupAiCore',
+  // agent: 'settings.groupAiCore',
+  model: 'settings.groupAiCore',
   appearance: 'settings.groupApp',
   archived: 'settings.archived.title',
   about: 'settings.groupAbout',
@@ -86,12 +87,12 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
     // Build builtin items
     const builtinMap: Record<string, SiderItem> = {
       model: { id: 'model', label: t('settings.model'), icon: <LinkCloud />, path: 'model' },
-      agent: {
-        id: 'agent',
-        label: t('settings.agents', { defaultValue: 'Agents' }),
-        icon: <Speed />,
-        path: 'agent',
-      },
+      // agent: {
+      //   id: 'agent',
+      //   label: t('settings.agents', { defaultValue: 'Agents' }),
+      //   icon: <Speed />,
+      //   path: 'agent',
+      // },
       skills: {
         id: 'skills',
         label: t('settings.skills', { defaultValue: 'Skills' }),
