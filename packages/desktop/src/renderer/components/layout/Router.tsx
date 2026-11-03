@@ -5,11 +5,13 @@ import DocumentTitle from '@renderer/components/layout/DocumentTitle';
 import { useCrossSessionRateLimitNotice } from '@/renderer/hooks/system/useCrossSessionRateLimitNotice';
 import { useAuth } from '@renderer/hooks/context/AuthContext';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
+import TsAssistantRedirect from '@renderer/pages/TsAssistantSettings/TsAssistantRedirect';
 const Conversation = React.lazy(() => import('@renderer/pages/conversation'));
 const Guid = React.lazy(() => import('@renderer/pages/guid'));
 // const AgentSettings = React.lazy(() => import('@renderer/pages/settings/AgentSettings'));
 // const AgentRepairPage = React.lazy(() => import('@renderer/pages/settings/AgentSettings/AgentRepairPage'));
-const AssistantSettings = React.lazy(() => import('@renderer/pages/settings/AssistantSettings'));
+// const AssistantSettings = React.lazy(() => import('@renderer/pages/settings/AssistantSettings'));
+const TsAssistantSettings = React.lazy(() => import('@renderer/pages/TsAssistantSettings'));
 const SkillsSettings = React.lazy(() => import('@renderer/pages/settings/SkillsSettings/SkillsHubSettings'));
 const SkillDetailPage = React.lazy(() => import('@renderer/pages/settings/SkillsSettings/SkillDetailPage'));
 const ToolsSettings = React.lazy(() => import('@renderer/pages/settings/ToolsSettings'));
@@ -80,10 +82,12 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
             element={TEAM_MODE_ENABLED ? withRouteFallback(TeamIndex) : <Navigate to='/guid' replace />}
           />
           <Route path='/settings/model' element={withRouteFallback(ModeSettings)} />
-          <Route path='/assistants' element={withRouteFallback(AssistantSettings)} />
+          {/* <Route path='/assistants' element={withRouteFallback(AssistantSettings)} /> */}
+          <Route path='/assistants' element={withRouteFallback(TsAssistantSettings)} />
           {/* Assistants moved out of Settings to a top-level entry; keep a redirect
               so old deep links / back-nav still land on the new page. */}
-          <Route path='/settings/assistants' element={<Navigate to='/assistants' replace />} />
+          {/* <Route path='/settings/assistants' element={<Navigate to='/assistants' replace />} /> */}
+          <Route path='/settings/assistants' element={<TsAssistantRedirect />} />
           {/* <Route path='/settings/agent' element={withRouteFallback(AgentSettings)} />
           <Route path='/settings/agent/:id/repair' element={withRouteFallback(AgentRepairPage)} /> */}
           {/* Skills and Tools are top-level settings entries. */}

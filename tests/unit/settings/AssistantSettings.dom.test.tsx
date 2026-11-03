@@ -6,15 +6,34 @@
 
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ConfigProvider } from '@arco-design/web-react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { Button, ConfigProvider } from '@arco-design/web-react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import TsAssistantSettings from '@/renderer/pages/TsAssistantSettings';
+import TsAssistantRedirect from '@/renderer/pages/TsAssistantSettings/TsAssistantRedirect';
 import AssistantSettings from '@/renderer/pages/settings/AssistantSettings';
 import EnabledAssistantsList from '@/renderer/pages/settings/AssistantSettings/home/EnabledAssistantsList';
-import type { AssistantListItem } from '@/renderer/pages/settings/AssistantSettings/types';
+import type { AssistantEditorViewModel, AssistantListItem } from '@/renderer/pages/settings/AssistantSettings/types';
 
 const useAssistantListMock = vi.fn();
 const useAssistantEditorMock = vi.fn();
+
+vi.mock('@/renderer/pages/TsAssistantSettings/TsAssistantDetailPage', () => ({
+  default: ({ assistant, onBack }: { assistant: AssistantListItem; onBack: () => void }) => (
+    <div data-testid='ts-readonly-detail'>
+      {assistant.name}
+      <Button onClick={onBack}>Back</Button>
+    </div>
+  ),
+}));
+
+vi.mock('@/renderer/pages/TsAssistantSettings/TsAssistantEditorPage', () => ({
+  default: ({ editor }: { editor: AssistantEditorViewModel }) => (
+    <Button data-testid='ts-editor-save' onClick={editor.actions.save}>
+      Save
+    </Button>
+  ),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -74,6 +93,27 @@ vi.mock('@/renderer/pages/settings/AssistantSettings/assistantUtils', async () =
     ...actual,
     resolveAvatarImageSrc: (avatar?: string) => avatar,
   };
+});
+
+const createAssistant = (id: string, source: AssistantListItem['source'], enabled = true): AssistantListItem => ({
+  id,
+  source,
+  enabled,
+  name: id,
+  sort_order: 0,
+  agent_id: 'test-agent',
+  agent_status: 'online',
+  name_i18n: {},
+  description_i18n: {},
+  context_i18n: {},
+  prompts_i18n: {},
+  enabled_skills: [],
+  custom_skill_names: [],
+  disabled_builtin_skills: [],
+  prompts: [],
+  models: [],
+  team_selectable: true,
+  deletable: source === 'user',
 });
 
 describe('AssistantSettings', () => {
@@ -341,5 +381,181 @@ describe('AssistantSettings', () => {
     expect(logo).not.toBeNull();
     expect(logo).toHaveClass('object-contain');
     vi.unstubAllGlobals();
+  });
+
+  describe('TsAssistantSettings', () => {
+    const setupAssistants = (assistants: AssistantListItem[]) => {
+      useAssistantListMock.mockReturnValue({
+        ...useAssistantListMock(),
+        assistants,
+        activeAssistant: assistants[0] ?? null,
+      });
+      useAssistantEditorMock.mockReturnValue({ ...useAssistantEditorMock(), editVisible: false });
+    };
+    const renderTs = (entry: string | { pathname: string; state: unknown } = '/assistants') =>
+      render(
+        <ConfigProvider>
+          <MemoryRouter initialEntries={[entry]}>
+            <TsAssistantSettings />
+          </MemoryRouter>
+        </ConfigProvider>
+      );
+
+    beforeEach(() => {
+      sessionStorage.clear();
+    });
+
+    it('shows only enabled official assistants alongside enabled and disabled custom assistants', () => {
+      setupAssistants([
+        createAssistant('official', 'builtin'),
+        createAssistant('hidden-official', 'builtin', false),
+        createAssistant('custom', 'user'),
+        createAssistant('disabled-custom', 'user', false),
+      ]);
+      renderTs();
+      expect(screen.getAllByRole('article')).toHaveLength(3);
+      expect(screen.queryByTestId('ts-assistant-hidden-official')).not.toBeInTheDocument();
+      expect(screen.getByTestId('ts-assistant-disabled-custom')).toBeInTheDocument();
+    });
+
+    it.each([true, false])('hides generated assistants with enabled=%s from the list and search', (enabled) => {
+      setupAssistants([createAssistant('generated', 'generated', enabled), createAssistant('custom', 'user')]);
+      renderTs();
+      expect(screen.queryByTestId('ts-assistant-generated')).not.toBeInTheDocument();
+      expect(screen.getByTestId('ts-assistant-custom')).toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: 'generated' } });
+      expect(screen.getByText('settings.assistantNoMatch')).toBeInTheDocument();
+    });
+
+    it('shows the empty state when only generated assistants exist', () => {
+      setupAssistants([createAssistant('generated', 'generated')]);
+      renderTs();
+      expect(screen.queryByRole('article')).not.toBeInTheDocument();
+      expect(screen.getByText('settings.assistantsEmpty')).toBeInTheDocument();
+    });
+
+    it('provides one manual create action without tabs or chat creation', () => {
+      setupAssistants([]);
+      renderTs();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      fireEvent.click(screen.getByTestId('ts-create-assistant'));
+      expect(useAssistantEditorMock().handleCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens an official assistant as read-only without invoking the editor', () => {
+      setupAssistants([createAssistant('official', 'builtin')]);
+      renderTs();
+      const official = within(screen.getByTestId('ts-assistant-official'));
+      expect(official.queryByRole('switch')).not.toBeInTheDocument();
+      fireEvent.click(official.getByRole('button'));
+      expect(screen.getByTestId('ts-readonly-detail')).toBeInTheDocument();
+      expect(useAssistantEditorMock().handleEdit).not.toHaveBeenCalled();
+    });
+
+    it('allows editing a disabled custom assistant', () => {
+      const assistant = createAssistant('custom', 'user', false);
+      setupAssistants([assistant]);
+      renderTs();
+      fireEvent.click(screen.getByTestId('ts-open-custom'));
+      expect(useAssistantEditorMock().handleEdit).toHaveBeenCalledWith(assistant);
+    });
+
+    it('allows toggling a disabled custom assistant on', () => {
+      const assistant = createAssistant('custom', 'user', false);
+      setupAssistants([assistant]);
+      renderTs();
+      fireEvent.click(screen.getByTestId('ts-toggle-custom'));
+      expect(useAssistantEditorMock().handleToggleEnabled).toHaveBeenCalledWith(assistant, true);
+    });
+
+    it('requests confirmation before deleting a custom assistant', () => {
+      const assistant = createAssistant('custom', 'user');
+      setupAssistants([assistant]);
+      renderTs();
+      fireEvent.click(screen.getByTestId('ts-delete-custom'));
+      expect(useAssistantEditorMock().handleDeleteRequest).toHaveBeenCalledWith(assistant);
+      expect(useAssistantEditorMock().handleDeleteConfirm).not.toHaveBeenCalled();
+    });
+
+    it('filters localized names and descriptions with case-insensitive trimmed search', () => {
+      const assistant = createAssistant('custom', 'user');
+      assistant.name_i18n = { 'en-US': 'Research Writer' };
+      assistant.description_i18n = { 'en-US': 'Summarize papers' };
+      setupAssistants([assistant, createAssistant('official', 'builtin')]);
+      renderTs();
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: '  PAPERS ' } });
+      expect(screen.getAllByRole('article')).toHaveLength(1);
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: 'research' } });
+      expect(screen.getByTestId('ts-assistant-custom')).toBeInTheDocument();
+    });
+
+    it('shows an empty search result and restores assistants when cleared', () => {
+      setupAssistants([createAssistant('custom', 'user')]);
+      renderTs();
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: 'missing' } });
+      expect(screen.getByText('settings.assistantNoMatch')).toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: '' } });
+      expect(screen.getByTestId('ts-assistant-custom')).toBeInTheDocument();
+    });
+
+    it('preserves the current search when returning from official details', () => {
+      setupAssistants([createAssistant('official', 'builtin')]);
+      renderTs();
+      fireEvent.change(screen.getByTestId('ts-search-assistants'), { target: { value: 'official' } });
+      fireEvent.click(screen.getByTestId('ts-open-official'));
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      expect(screen.getByTestId('ts-search-assistants')).toHaveValue('official');
+    });
+
+    it('opens official deep links as read-only and consumes session intent', () => {
+      setupAssistants([createAssistant('official', 'builtin')]);
+      sessionStorage.setItem(
+        'guid.openAssistantEditorIntent',
+        JSON.stringify({
+          assistantId: 'official',
+          openAssistantEditor: true,
+        })
+      );
+      renderTs();
+      expect(screen.getByTestId('ts-readonly-detail')).toBeInTheDocument();
+      expect(useAssistantEditorMock().handleEdit).not.toHaveBeenCalled();
+      expect(sessionStorage.getItem('guid.openAssistantEditorIntent')).toBeNull();
+    });
+
+    it('does not expose disabled official assistants through navigation state', () => {
+      setupAssistants([createAssistant('official', 'builtin', false)]);
+      renderTs({ pathname: '/assistants', state: { openAssistantEditor: true, openAssistantId: 'official' } });
+      expect(screen.queryByTestId('ts-readonly-detail')).not.toBeInTheDocument();
+      expect(useAssistantEditorMock().handleEdit).not.toHaveBeenCalled();
+    });
+
+    it('opens custom highlight links in the editor', () => {
+      const assistant = createAssistant('custom', 'user');
+      setupAssistants([assistant]);
+      renderTs('/assistants?highlight=custom');
+      expect(useAssistantEditorMock().handleEdit).toHaveBeenCalledWith(assistant);
+    });
+
+    it('preserves old settings links and their navigation state', () => {
+      const TsLocation = () => {
+        const location = useLocation();
+        return <div data-testid='ts-location'>{JSON.stringify(location)}</div>;
+      };
+      const state = { openAssistantEditor: true, openAssistantId: 'custom' };
+      render(
+        <MemoryRouter initialEntries={[{ pathname: '/settings/assistants', search: '?highlight=custom', state }]}>
+          <Routes>
+            <Route path='/settings/assistants' element={<TsAssistantRedirect />} />
+            <Route path='/assistants' element={<TsLocation />} />
+          </Routes>
+        </MemoryRouter>
+      );
+      expect(JSON.parse(screen.getByTestId('ts-location').textContent || '{}')).toMatchObject({
+        pathname: '/assistants',
+        search: '?highlight=custom',
+        state,
+      });
+    });
   });
 });
