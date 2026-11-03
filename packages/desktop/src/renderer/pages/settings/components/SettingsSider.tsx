@@ -9,7 +9,7 @@ import {
   Computer,
   Earth,
   Inbox,
-  Info,
+  // Info,
   Lightning,
   LinkCloud,
   Puzzle,
@@ -35,7 +35,7 @@ export const BUILTIN_TAB_IDS = [
   'pet',
   'system',
   'archived',
-  'about',
+  // 'about',
 ] as const;
 
 /**
@@ -59,7 +59,7 @@ const GROUP_HEADER_BEFORE: Record<string, string> = {
   model: 'settings.groupAiCore',
   appearance: 'settings.groupApp',
   archived: 'settings.archived.title',
-  about: 'settings.groupAbout',
+  // about: 'settings.groupAbout',
 };
 
 type SiderItem = {
@@ -120,7 +120,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
         icon: <Inbox />,
         path: 'archived',
       },
-      about: { id: 'about', label: t('settings.about'), icon: <Info />, path: 'about' },
+      // about: { id: 'about', label: t('settings.about'), icon: <Info />, path: 'about' },
     };
 
     // Start with ordered builtin IDs, hiding desktop-only tabs in browser mode

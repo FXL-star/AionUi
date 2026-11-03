@@ -43,7 +43,7 @@ import PanelRoute from '@renderer/components/layout/Router';
 import SettingsSider from '@renderer/pages/settings/components/SettingsSider';
 import SettingsPageWrapper from '@renderer/pages/settings/components/SettingsPageWrapper';
 
-describe('Settings navigation with Agents hidden', () => {
+describe('Settings navigation with hidden tabs', () => {
   beforeEach(() => {
     platformMocks.isDesktop.mockReturnValue(true);
     window.history.replaceState(null, '', '/');
@@ -76,6 +76,31 @@ describe('Settings navigation with Agents hidden', () => {
 
     expect(screen.queryByRole('button', { name: 'settings.agents' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'settings.model' })).toBeInTheDocument();
+  });
+
+  it.each([true, false])('hides About and its group in the settings sidebar (desktop: %s)', (isDesktop) => {
+    platformMocks.isDesktop.mockReturnValue(isDesktop);
+    render(
+      <MemoryRouter initialEntries={['/settings/model']}>
+        <SettingsSider />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByText('settings.about')).not.toBeInTheDocument();
+    expect(screen.queryByText('settings.groupAbout')).not.toBeInTheDocument();
+    expect(screen.getByText('settings.system')).toBeInTheDocument();
+  });
+
+  it.each([true, false])('hides About in the mobile settings navigation (desktop: %s)', (isDesktop) => {
+    platformMocks.isDesktop.mockReturnValue(isDesktop);
+    render(
+      <MemoryRouter initialEntries={['/settings/model']}>
+        <SettingsPageWrapper>Settings content</SettingsPageWrapper>
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: 'settings.about' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'settings.system' })).toBeInTheDocument();
   });
 
   it.each(['/settings', '/settings/agent', '/settings/agent/claude/repair'])(
