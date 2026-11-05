@@ -1,4 +1,5 @@
 {
+  "tsSwitchAssistant": "アシスタントを切り替え",
   "promptExamplesHint": "これらの指示を試す",
   "defaultPrompts": {
     "understand": "このプロジェクトを調べて、何をするものか、どこから手を付ければいいかを分かりやすく教えて",

@@ -1,4 +1,5 @@
 {
+  "tsSwitchAssistant": "切換助手",
   "promptExamplesHint": "試試這些指令",
   "defaultPrompts": {
     "understand": "了解一下這個專案，用白話告訴我它是做什麼的、從哪裡入手",

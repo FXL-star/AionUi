@@ -1,4 +1,5 @@
 {
+  "tsSwitchAssistant": "Asistanı değiştir",
   "promptExamplesHint": "Bu talimatları deneyin",
   "defaultPrompts": {
     "understand": "Bu projeyi incele ve ne yaptığını, nereden başlamam gerektiğini basit bir dille anlat",

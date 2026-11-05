@@ -1,0 +1,91 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.switchButton {
+  flex-shrink: 0;
+}
+
+.modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(440px, 60vh);
+  overflow-y: auto;
+}
+
+.option:global(.arco-btn) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: auto;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: start;
+  color: var(--text-primary);
+  white-space: normal;
+}
+
+.option > :global(.arco-avatar-group),
+.option > :global(.arco-tag) {
+  flex-shrink: 0;
+}
+
+.option.selected {
+  background: var(--color-fill-2);
+}
+
+.meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.optionName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .name {
+    font-size: 20px;
+  }
+}

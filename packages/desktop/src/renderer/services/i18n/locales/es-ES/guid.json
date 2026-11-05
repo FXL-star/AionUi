@@ -1,4 +1,5 @@
 {
+  "tsSwitchAssistant": "Cambiar asistente",
   "agentFallbackNotice": "{{original}} no está disponible, usando {{fallback}} en su lugar.",
   "noAgentAvailable": "No hay ningún agente principal disponible. Inicia sesión en Google o instala Claude/Codex CLI. ¿Ir a configuración?",
   "noAgentAvailableShort": "No hay agente principal disponible. Haz clic para configurar.",

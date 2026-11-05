@@ -1080,6 +1080,7 @@ export type I18nKey =
   | 'guid.defaultPrompts.understand'
   | 'guid.promptExamplesHint'
   | 'guid.selectAssistantHint'
+  | 'guid.tsSwitchAssistant'
   | 'guid.workspace.clearWorkspace'
   | 'guid.workspace.noProject'
   | 'guid.workspace.optional'
