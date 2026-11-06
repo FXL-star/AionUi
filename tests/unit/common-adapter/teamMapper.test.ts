@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { fromApiSidebarItems } from '@/common/adapter/sidebarMapper';
+import type { SidebarItem } from '@/common/types/sidebar';
 import {
   fromBackendAssistant,
   fromBackendTeam,
@@ -17,6 +19,17 @@ const contextResetReady = {
 } as const;
 
 describe('teamMapper', () => {
+  it.each([undefined, false, true])('maps the built-in flag %s without changing legacy teams', (is_builtin) => {
+    expect(fromBackendTeam({ id: 'team-1', is_builtin }).is_builtin).toBe(is_builtin ?? false);
+  });
+
+  it.each([undefined, false, true])('preserves built-in flag %s on sidebar team summaries', (is_builtin) => {
+    const item = { type: 'team', team_id: 'team-1', name: 'Office', is_builtin } as SidebarItem;
+    expect(fromApiSidebarItems({ items: [item], has_more: false }).items[0]).toMatchObject({
+      is_builtin: is_builtin ?? false,
+    });
+  });
+
   describe('normalizeTeamStatus', () => {
     it.each([
       ['pending', 'pending'],

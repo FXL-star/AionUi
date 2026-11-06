@@ -7,6 +7,20 @@ import {
 } from '@/renderer/pages/team/utils/removeTeamAssistantWithCronCleanup';
 
 describe('removeTeamAssistantWithCronCleanup', () => {
+  it.each(['member', 'team'])('leaves built-in %s and its cron jobs intact', async (target) => {
+    const getConversation = vi.fn();
+    const removeCronJob = vi.fn();
+    const remove = vi.fn();
+    const params = { team: { ...team(), is_builtin: true }, getConversation, removeCronJob };
+    if (target === 'member') {
+      await removeTeamAssistantWithCronCleanup({ ...params, slot_id: 'member-slot', removeAgent: remove });
+    } else {
+      await removeTeamWithCronCleanup({ ...params, removeTeam: remove });
+    }
+    expect(getConversation).not.toHaveBeenCalled();
+    expect(removeCronJob).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
   it('removes the member cron job before removing the team member', async () => {
     const calls: string[] = [];
     const getConversation = vi.fn(async () => conversation({ extra: { cron_job_id: 'cron-1' } }));
@@ -112,6 +126,7 @@ function conversation(overrides?: Partial<TChatConversation>): TChatConversation
 function team(): TTeam {
   return {
     id: 'team-1',
+    is_builtin: false,
     user_id: 'user-1',
     name: 'Cron Team',
     workspace: '/tmp/team',

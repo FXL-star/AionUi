@@ -52,6 +52,7 @@ export function useTeamList() {
   const removeTeam = useCallback(
     async (id: string) => {
       const team = teams.find((item) => item.id === id);
+      if (team?.is_builtin) return;
       if (team) {
         await removeTeamWithCronCleanup({
           team,

@@ -5,6 +5,7 @@ import { createTeamConfigOptionsPort, type TeamConfigOptionsPort } from './teamC
 type TeamPermissionContextValue = {
   /** Whether we are in team mode */
   isTeamMode: true;
+  readOnly: boolean;
   /** Whether the current active agent is the team leader */
   isLeaderAgent: boolean;
   /** Conversation ID of the leader agent */
@@ -24,6 +25,7 @@ const TeamPermissionContext = createContext<TeamPermissionContextValue | null>(n
 export const TeamPermissionProvider: React.FC<{
   children: React.ReactNode;
   team_id: string;
+  readOnly?: boolean;
   isLeaderAgent: boolean;
   leaderConversationId: string;
   allConversationIds: string[];
@@ -31,6 +33,7 @@ export const TeamPermissionProvider: React.FC<{
 }> = ({
   children,
   team_id,
+  readOnly = false,
   isLeaderAgent,
   leaderConversationId,
   allConversationIds,
@@ -40,12 +43,13 @@ export const TeamPermissionProvider: React.FC<{
 
   const propagateMode = useCallback(
     (mode: string) => {
+      if (readOnly) return;
       // Persist session_mode on the team record so newly spawned agents inherit it
       void ipcBridge.team.setSessionMode.invoke({ team_id, session_mode: mode }).catch(() => {
         // Best-effort: if this fails, active agents still receive per-conversation config updates.
       });
     },
-    [team_id]
+    [readOnly, team_id]
   );
 
   const warmupSession = useCallback((): Promise<void> => {
@@ -70,18 +74,22 @@ export const TeamPermissionProvider: React.FC<{
         warmupSession,
         getConfigOptions: (targetTeamId, conversation_id) =>
           ipcBridge.team.getConfigOptions.invoke({ team_id: targetTeamId, conversation_id }),
-        setConfigOption: (conversation_id, option_id, value) =>
-          ipcBridge.team.setConfigOption.invoke({ team_id, conversation_id, option_id, value }),
+        setConfigOption: (conversation_id, option_id, value) => {
+          if (readOnly) return Promise.reject(new Error('BUILTIN_TEAM_IMMUTABLE'));
+          return ipcBridge.team.setConfigOption.invoke({ team_id, conversation_id, option_id, value });
+        },
         isConfigOptionBlocked: (conversation_id, _option_id, category) =>
+          readOnly ||
           runtimeStartingConversationIds.has(conversation_id) ||
           (conversation_id === leaderConversationId && category === 'mode' && runtimeStartingConversationIds.size > 0),
       }),
-    [leaderConversationId, runtimeStartingConversationIds, team_id, warmupSession]
+    [readOnly, leaderConversationId, runtimeStartingConversationIds, team_id, warmupSession]
   );
 
   const value = useMemo<TeamPermissionContextValue>(
     () => ({
       isTeamMode: true,
+      readOnly,
       isLeaderAgent,
       leaderConversationId,
       allConversationIds,
@@ -89,7 +97,7 @@ export const TeamPermissionProvider: React.FC<{
       warmupSession,
       configOptionsPort,
     }),
-    [isLeaderAgent, leaderConversationId, allConversationIds, propagateMode, warmupSession, configOptionsPort]
+    [readOnly, isLeaderAgent, leaderConversationId, allConversationIds, propagateMode, warmupSession, configOptionsPort]
   );
 
   return <TeamPermissionContext.Provider value={value}>{children}</TeamPermissionContext.Provider>;

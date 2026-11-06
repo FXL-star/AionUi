@@ -40,6 +40,7 @@ export type SidebarScope =
 /** An aggregated team row for the sidebar (server-side aggregate). */
 export type SidebarTeamItem = {
   team_id: string;
+  is_builtin: boolean;
   name: string;
   /** `MAX(updated_at)` across active member conversations. */
   updated_at: number;

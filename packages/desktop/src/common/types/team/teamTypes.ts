@@ -57,6 +57,7 @@ export type TeamAssistant = {
 /** Persisted team record (stored in SQLite `teams` table) */
 export type TTeam = {
   id: string;
+  is_builtin: boolean;
   user_id: string;
   name: string;
   workspace: string;

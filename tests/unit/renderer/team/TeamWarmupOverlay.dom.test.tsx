@@ -119,4 +119,17 @@ describe('TeamWarmupOverlay failure states', () => {
     );
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('hides the generic startup failure when model configuration is required', () => {
+    const { container } = render(
+      <TeamWarmupOverlay
+        phase='model_required'
+        assistants={[assistant('l', 'leader', 'Gemini')]}
+        runtimeStatus={runtime([])}
+        colorOf={colorOf}
+        onRetry={() => {}}
+      />
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
 });

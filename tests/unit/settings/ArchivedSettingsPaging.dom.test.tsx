@@ -7,7 +7,7 @@
 import React from 'react';
 import { SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const { getMock, itemsMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -90,6 +90,36 @@ const renderPage = () =>
   );
 
 describe('ArchivedSettings paging', () => {
+  it('prevents individual and bulk deletion of an archived built-in team', async () => {
+    getMock.mockResolvedValue({
+      groups: [
+        {
+          scope: { type: 'chats' },
+          has_more: false,
+          items: [
+            {
+              type: 'team',
+              team_id: 'builtin',
+              name: 'Builtin Office',
+              is_builtin: true,
+              updated_at: 1_700_000_000_000,
+              pinned: false,
+              member_conversation_ids: [],
+            },
+          ],
+        },
+      ],
+      has_more_groups: false,
+    });
+    renderPage();
+    const name = await screen.findByText('Builtin Office');
+    const row = name.parentElement!.parentElement!;
+    expect(within(row).getAllByRole('button')[0]).toBeDisabled();
+    fireEvent.click(screen.getByText('settings.archived.multiSelect'));
+    fireEvent.click(screen.getByText('settings.archived.selectAll'));
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
+    expect(screen.getByText('settings.archived.deleteSelected').closest('button')).toBeDisabled();
+  });
   beforeEach(() => {
     getMock.mockReset();
     itemsMock.mockReset();

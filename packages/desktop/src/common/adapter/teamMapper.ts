@@ -131,6 +131,7 @@ export function fromBackendTeam(raw: unknown): TTeam {
     (r.leader_assistant_id as string | undefined) ?? (r.leader_agent_id as string | undefined) ?? '';
   return {
     id: (r.id as string | undefined) ?? '',
+    is_builtin: (r.is_builtin as boolean | undefined) ?? false,
     user_id: (r.user_id as string | undefined) ?? '',
     name: (r.name as string | undefined) ?? '',
     workspace: (r.workspace as string | undefined) ?? '',

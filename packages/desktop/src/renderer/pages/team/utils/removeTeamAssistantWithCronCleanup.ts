@@ -29,6 +29,7 @@ export async function removeTeamAssistantWithCronCleanup({
   removeCronJob,
   removeAgent,
 }: RemoveTeamAssistantWithCronCleanupParams): Promise<void> {
+  if (team.is_builtin) return;
   const assistant = team.assistants.find((item) => item.slot_id === slot_id);
   if (assistant?.conversation_id) {
     const conversation = await getConversation(assistant.conversation_id);
@@ -47,6 +48,7 @@ export async function removeTeamWithCronCleanup({
   removeCronJob,
   removeTeam,
 }: RemoveTeamWithCronCleanupParams): Promise<void> {
+  if (team.is_builtin) return;
   const cronJobIds = new Set<string>();
   for (const assistant of team.assistants) {
     if (!assistant.conversation_id) continue;

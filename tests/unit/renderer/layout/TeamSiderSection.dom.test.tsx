@@ -16,6 +16,7 @@ const fixtures = vi.hoisted(() => ({
 const teams: TTeam[] = [
   {
     id: 'running-team',
+    is_builtin: false,
     user_id: 'user-1',
     name: 'Running team',
     workspace: '/tmp/running',
@@ -27,6 +28,7 @@ const teams: TTeam[] = [
   },
   {
     id: 'idle-team',
+    is_builtin: true,
     user_id: 'user-1',
     name: 'Idle team',
     workspace: '/tmp/idle',
@@ -57,12 +59,23 @@ vi.mock('@renderer/components/layout/Sider/useSiderTeamRunning', () => ({
 vi.mock('@renderer/components/layout/Sider/SiderItem', async () => {
   const ReactModule = await vi.importActual<typeof import('react')>('react');
   return {
-    default: ({ icon, name, pinned }: { icon: React.ReactNode; name: string; pinned?: boolean }) =>
+    default: ({
+      icon,
+      name,
+      pinned,
+      menuItems,
+    }: {
+      icon: React.ReactNode;
+      name: string;
+      pinned?: boolean;
+      menuItems: { key: string }[];
+    }) =>
       ReactModule.createElement(
         'div',
         {
           'data-testid': `sider-item-${name}`,
           'data-pinned': String(Boolean(pinned)),
+          'data-menu-items': menuItems.map((item) => item.key).join(','),
         },
         icon
       ),
@@ -120,6 +133,12 @@ const renderSection = (collapsed: boolean) =>
   render(<TeamSiderSection collapsed={collapsed} pathname='/guid' siderTooltipProps={{}} />);
 
 describe('TeamSiderSection running state', () => {
+  it('keeps pinning but hides rename and archive for built-in teams', () => {
+    localStorage.setItem('team-section-expanded', 'true');
+    renderSection(false);
+    expect(screen.getByTestId('sider-item-Idle team')).toHaveAttribute('data-menu-items', 'pin');
+    expect(screen.getByTestId('sider-item-Running team')).toHaveAttribute('data-menu-items', 'pin,rename,archive');
+  });
   beforeEach(() => {
     localStorage.clear();
     fixtures.runningTeamIds.clear();

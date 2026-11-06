@@ -15,6 +15,7 @@ type AgentStatusInfo = {
 };
 
 export type TeamTabsContextValue = {
+  readOnly: boolean;
   assistants: TeamAssistant[];
   activeSlotId: string;
   statusMap: Map<string, AgentStatusInfo>;
@@ -59,6 +60,7 @@ export const TeamTabsProvider: React.FC<{
   statusMap: Map<string, AgentStatusInfo>;
   defaultActiveSlotId: string;
   team_id: string;
+  readOnly?: boolean;
   renameAssistant?: (slot_id: string, new_name: string) => Promise<void>;
   removeAssistant?: (slot_id: string) => void;
   addAssistant?: (assistant: TeamAssistantInput) => Promise<TeamAssistant>;
@@ -69,6 +71,7 @@ export const TeamTabsProvider: React.FC<{
   statusMap,
   defaultActiveSlotId,
   team_id,
+  readOnly = false,
   renameAssistant,
   removeAssistant,
   addAssistant,
@@ -125,26 +128,30 @@ export const TeamTabsProvider: React.FC<{
     [storageKey]
   );
 
-  const reorderAssistants = useCallback((fromSlotId: string, toSlotId: string) => {
-    if (fromSlotId === toSlotId) return;
+  const reorderAssistants = useCallback(
+    (fromSlotId: string, toSlotId: string) => {
+      if (readOnly || fromSlotId === toSlotId) return;
 
-    setLocalAssistants((prev) => {
-      const leadAssistant = prev.find((assistant) => assistant.role === 'leader');
-      const teammates = prev.filter((assistant) => assistant.role !== 'leader');
-      const fromIndex = teammates.findIndex((assistant) => assistant.slot_id === fromSlotId);
-      const toIndex = teammates.findIndex((assistant) => assistant.slot_id === toSlotId);
-      if (fromIndex === -1 || toIndex === -1) return prev;
+      setLocalAssistants((prev) => {
+        const leadAssistant = prev.find((assistant) => assistant.role === 'leader');
+        const teammates = prev.filter((assistant) => assistant.role !== 'leader');
+        const fromIndex = teammates.findIndex((assistant) => assistant.slot_id === fromSlotId);
+        const toIndex = teammates.findIndex((assistant) => assistant.slot_id === toSlotId);
+        if (fromIndex === -1 || toIndex === -1) return prev;
 
-      const nextTeammates = [...teammates];
-      const [removed] = nextTeammates.splice(fromIndex, 1);
-      nextTeammates.splice(toIndex, 0, removed);
+        const nextTeammates = [...teammates];
+        const [removed] = nextTeammates.splice(fromIndex, 1);
+        nextTeammates.splice(toIndex, 0, removed);
 
-      return leadAssistant ? [leadAssistant, ...nextTeammates] : nextTeammates;
-    });
-  }, []);
+        return leadAssistant ? [leadAssistant, ...nextTeammates] : nextTeammates;
+      });
+    },
+    [readOnly]
+  );
 
   const handleRenameAssistant = useCallback(
     async (slot_id: string, new_name: string) => {
+      if (readOnly) return;
       await renameAssistant?.(slot_id, new_name);
       setLocalAssistants((prev) =>
         prev.map((assistant) =>
@@ -152,25 +159,27 @@ export const TeamTabsProvider: React.FC<{
         )
       );
     },
-    [renameAssistant]
+    [readOnly, renameAssistant]
   );
 
   const contextValue = useMemo(
     () => ({
+      readOnly,
       assistants,
       activeSlotId,
       statusMap,
       team_id,
       switchTab,
-      renameAssistant: renameAssistant ? handleRenameAssistant : undefined,
-      removeAssistant,
-      addAssistant,
+      renameAssistant: !readOnly && renameAssistant ? handleRenameAssistant : undefined,
+      removeAssistant: readOnly ? undefined : removeAssistant,
+      addAssistant: readOnly ? undefined : addAssistant,
       membershipMutationBusy,
       reorderAssistants,
       colorOf,
       colorOfConversation,
     }),
     [
+      readOnly,
       assistants,
       activeSlotId,
       statusMap,

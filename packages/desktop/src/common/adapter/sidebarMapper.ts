@@ -9,7 +9,7 @@
  * the front-end sidebar types. The only transform is on conversation items: the
  * wire `ConversationResponse` is run through `fromApiConversation` (same mapping
  * as `getUserConversations`) so downstream code sees a `TChatConversation`.
- * Team items and group/scope metadata pass through unchanged.
+ * Team flags default to false for older responses; group/scope metadata passes through unchanged.
  */
 
 import type {
@@ -73,7 +73,7 @@ const mapItem = (raw: SidebarItem): SidebarItem => {
     } as TChatConversation;
     return { type: 'conversation', conversation };
   }
-  return raw;
+  return { ...raw, is_builtin: raw.is_builtin ?? false };
 };
 
 const mapGroup = (raw: SidebarGroup): SidebarGroup => ({

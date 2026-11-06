@@ -30,6 +30,7 @@ type TeamTabViewProps = {
   pendingCount?: number;
   /** A drag is in progress somewhere in the bar: freeze hover affordances so pills don't reflow mid-drag. */
   dragActive: boolean;
+  sortingDisabled: boolean;
   onSwitch: (slot_id: string) => void;
   onRename?: (slot_id: string, new_name: string) => void;
   onRemove?: (slot_id: string) => void;
@@ -48,6 +49,7 @@ const TeamTabView: React.FC<TeamTabViewProps> = ({
   color,
   pendingCount = 0,
   dragActive,
+  sortingDisabled,
   onSwitch,
   onRename,
   onRemove,
@@ -60,7 +62,7 @@ const TeamTabView: React.FC<TeamTabViewProps> = ({
   // Leader stays fixed at index 0 and never takes part in sorting.
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: slot_id,
-    disabled: isLeader,
+    disabled: isLeader || sortingDisabled,
   });
 
   useEffect(() => {
@@ -109,7 +111,7 @@ const TeamTabView: React.FC<TeamTabViewProps> = ({
   // 不遮头像和状态点），拖动时兄弟胶囊实时让位（transform 平移），松手原位落地。
   // dragActive 期间冻结其他胶囊的 hover 增宽（拖动经过时布局不能跳）；正被拖动的胶囊则保持
   // 手柄和按钮可见，宽度全程恒定。
-  const showDragHandle = !isLeader && !editing && ((hovered && !dragActive) || isDragging);
+  const showDragHandle = !isLeader && !sortingDisabled && !editing && ((hovered && !dragActive) || isDragging);
   const showHoverActions = !editing && ((hovered && !dragActive) || isDragging);
   return (
     <div
@@ -238,6 +240,7 @@ type TeamTabsProps = {
 const TeamTabs: React.FC<TeamTabsProps> = ({ onTabClick, pendingCounts, warmingUp = false, failedSlotIds }) => {
   const { t } = useTranslation();
   const {
+    readOnly,
     assistants,
     activeSlotId,
     statusMap,
@@ -248,10 +251,9 @@ const TeamTabs: React.FC<TeamTabsProps> = ({ onTabClick, pendingCounts, warmingU
     addAssistant,
     colorOf,
   } = useTeamTabs();
-  // 胶囊操作（增/删/改名）只在「warmup 进行中」禁用。warmup 一旦结束——无论成功还是失败——
-  // 就全部放开。后端对增删改成员本身有并发锁保证串行，前端不需要再叠一层忙碌禁用
-  // （否则删完一个成员，后端重建剩余成员时又会把胶囊锁住，出现「删一个卡一下」的怪体验）。
-  const memberOpsDisabled = warmingUp;
+  // Built-in rosters stay immutable. Custom teams allow member operations once
+  // warmup ends, including failed warmup so users can repair the roster.
+  const memberOpsDisabled = warmingUp || readOnly;
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftFade, setShowLeftFade] = useState(false);
   const [showRightFade, setShowRightFade] = useState(false);
@@ -295,10 +297,10 @@ const TeamTabs: React.FC<TeamTabsProps> = ({ onTabClick, pendingCounts, warmingU
   const handleDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
       setDragActive(false);
-      if (!over || active.id === over.id) return;
+      if (memberOpsDisabled || !over || active.id === over.id) return;
       reorderAssistants(String(active.id), String(over.id));
     },
-    [reorderAssistants]
+    [memberOpsDisabled, reorderAssistants]
   );
 
   const handleDragCancel = useCallback(() => setDragActive(false), []);
@@ -342,6 +344,7 @@ const TeamTabs: React.FC<TeamTabsProps> = ({ onTabClick, pendingCounts, warmingU
                     color={colorOf(assistant.slot_id)}
                     pendingCount={pendingCounts?.get(assistant.slot_id) ?? 0}
                     dragActive={dragActive}
+                    sortingDisabled={memberOpsDisabled}
                     onSwitch={(slot_id) => {
                       switchTab(slot_id);
                       onTabClick?.(slot_id);

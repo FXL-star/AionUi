@@ -649,9 +649,12 @@ const AionrsSendBox: React.FC<{
       });
     }
 
-    return entries;
+    return teamPermission?.readOnly
+      ? entries.filter((entry) => !['model', 'permission', 'thought-level'].includes(entry.key))
+      : entries;
   }, [
     attachEntries,
+    teamPermission?.readOnly,
     currentMode,
     dynamicModes,
     handleSheetModeChange,
@@ -803,21 +806,23 @@ const AionrsSendBox: React.FC<{
         }
         rightTools={
           <div className='flex items-center gap-8px min-w-0'>
-            <AgentModeSelector
-              backend='aionrs'
-              conversation_id={conversation_id}
-              compact
-              initialMode={session_mode}
-              dynamicModes={dynamicModes}
-              compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
-              modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
-              compactLabelPrefix={t('agentMode.permission')}
-              hideCompactLabelPrefixOnMobile
-              onModeChanged={propagateMode}
-              beforeRuntimeSync={prepareRuntimeConfig}
-              beforeRuntimeSet={teamPermission?.warmupSession}
-              configOptionsPort={teamPermission?.configOptionsPort}
-            />
+            {!teamPermission?.readOnly && (
+              <AgentModeSelector
+                backend='aionrs'
+                conversation_id={conversation_id}
+                compact
+                initialMode={session_mode}
+                dynamicModes={dynamicModes}
+                compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
+                modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
+                compactLabelPrefix={t('agentMode.permission')}
+                hideCompactLabelPrefixOnMobile
+                onModeChanged={propagateMode}
+                beforeRuntimeSync={prepareRuntimeConfig}
+                beforeRuntimeSet={teamPermission?.warmupSession}
+                configOptionsPort={teamPermission?.configOptionsPort}
+              />
+            )}
           </div>
         }
         prefix={

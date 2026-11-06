@@ -38,6 +38,16 @@ vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
 import { ipcBridge } from '@/common';
 
 describe('useTeamList cron cleanup', () => {
+  it('does not delete built-in teams, cron jobs or saved tab preferences', async () => {
+    vi.mocked(ipcBridge.team.list.invoke).mockResolvedValue([{ ...team(), is_builtin: true }]);
+    localStorage.setItem('team-active-slot-team-1', 'member-slot');
+    const { result } = renderHook(() => useTeamList(), { wrapper: swrWrapper });
+    await waitFor(() => expect(result.current.teams).toHaveLength(1));
+    await act(() => result.current.removeTeam('team-1'));
+    expect(ipcBridge.team.remove.invoke).not.toHaveBeenCalled();
+    expect(ipcBridge.cron.removeJob.invoke).not.toHaveBeenCalled();
+    expect(localStorage.getItem('team-active-slot-team-1')).toBe('member-slot');
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -92,6 +102,7 @@ function conversation(overrides?: Partial<TChatConversation>): TChatConversation
 function team(): TTeam {
   return {
     id: 'team-1',
+    is_builtin: false,
     user_id: 'user-1',
     name: 'Cron Team',
     workspace: '/tmp/team',

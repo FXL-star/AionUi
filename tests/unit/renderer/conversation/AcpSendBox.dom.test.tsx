@@ -170,7 +170,9 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
   },
 }));
 
-vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({ default: () => null }));
+vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({
+  default: () => <div data-testid='permission-selector' />,
+}));
 vi.mock('@/renderer/components/chat/CommandQueuePanel', () => ({
   default: (props: { onSendNow: (item: unknown) => void }) => {
     commandQueuePanelPropsSpy(props);
@@ -341,6 +343,34 @@ const makeMessageState = (): UseAcpMessageReturn => ({
 });
 
 describe('AcpSendBox', () => {
+  it('hides built-in permission changes while leaving the send box available', () => {
+    useTeamPermissionMock.mockReturnValue({ readOnly: true, warmupSession: vi.fn(async () => {}) });
+    render(<AcpSendBox conversation_id='conv-1' backend='claude' messageState={makeMessageState()} />);
+    expect(screen.queryByTestId('permission-selector')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'send' })).not.toBeDisabled();
+  });
+
+  it('removes built-in configuration actions from the mobile action sheet', () => {
+    isMobileMock.current = true;
+    useAcpConfigOptionsMock.mockReturnValue({
+      setStatus: { state: 'idle' },
+      mode: { id: 'mode', currentValue: 'default', options: [{ value: 'default', label: 'Default' }] },
+      model: null,
+      thoughtLevel: { id: 'reasoning_effort', currentValue: 'high', options: [{ value: 'high', label: 'High' }] },
+      reload: vi.fn(),
+      setConfigOption: vi.fn(),
+    });
+    useTeamPermissionMock.mockReturnValue({ readOnly: true, warmupSession: vi.fn(async () => {}) });
+    const { rerender } = render(
+      <AcpSendBox conversation_id='conv-1' backend='claude' messageState={makeMessageState()} />
+    );
+    expect(
+      mobileActionSheetEntries.current.filter((entry) => ['model', 'permission', 'thought-level'].includes(entry.key))
+    ).toEqual([]);
+    useTeamPermissionMock.mockReturnValue(null);
+    rerender(<AcpSendBox conversation_id='conv-1' backend='claude' messageState={makeMessageState()} />);
+    expect(mobileActionSheetEntries.current.map((entry) => entry.key)).toEqual(['thought-level', 'permission']);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     isMobileMock.current = false;

@@ -74,7 +74,7 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
   const [renameLoading, setRenameLoading] = useState(false);
 
   const handleRenameConfirm = useCallback(async () => {
-    if (!renameId || !renameName.trim()) return;
+    if (!renameId || !renameName.trim() || teams.find((team) => team.id === renameId)?.is_builtin) return;
     setRenameLoading(true);
     try {
       await ipcBridge.team.renameTeam.invoke({ id: renameId, name: renameName.trim() });
@@ -90,7 +90,7 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
     } finally {
       setRenameLoading(false);
     }
-  }, [globalMutate, refreshTeams, renameId, renameName, t]);
+  }, [globalMutate, refreshTeams, renameId, renameName, t, teams]);
 
   const sortedTeams = useMemo(() => {
     const pinned = teams.filter((team) => pinnedIds.includes(team.id));
@@ -113,6 +113,7 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
   // the archive page in Settings picks it up for restore or permanent delete.
   const handleArchiveTeam = useCallback(
     async (team_id: string) => {
+      if (teams.find((team) => team.id === team_id)?.is_builtin) return;
       try {
         await ipcBridge.sidebar.archive.invoke({ item_type: 'team', item_id: team_id });
         await refreshTeams();
@@ -125,7 +126,7 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
         Message.error(t('team.sider.archiveFailed'));
       }
     },
-    [refreshTeams, t]
+    [refreshTeams, t, teams]
   );
 
   return (
@@ -259,15 +260,15 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
                     name={team.name}
                     selected={pathname.startsWith(`/team/${team.id}`)}
                     pinned={isPinned && !isRunning}
-                    menuItems={menuItems}
+                    menuItems={team.is_builtin ? menuItems.filter((item) => item.key === 'pin') : menuItems}
                     onMenuAction={(key) => {
                       if (key === 'pin') {
                         togglePin(team.id);
-                      } else if (key === 'rename') {
+                      } else if (key === 'rename' && !team.is_builtin) {
                         setRenameId(team.id);
                         setRenameName(team.name);
                         setRenameVisible(true);
-                      } else if (key === 'archive') {
+                      } else if (key === 'archive' && !team.is_builtin) {
                         void handleArchiveTeam(team.id);
                       }
                     }}

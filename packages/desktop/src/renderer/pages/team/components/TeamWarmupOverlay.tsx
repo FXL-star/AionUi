@@ -53,7 +53,7 @@ export function simplifyWarmupError(raw: string | undefined): string | undefined
 
 const TeamWarmupOverlay: React.FC<Props> = ({ phase, assistants, runtimeStatus, colorOf, onRetry }) => {
   const { t } = useTranslation();
-  if (phase === 'ready') return null;
+  if (phase === 'ready' || phase === 'model_required') return null;
 
   const isFailure = phase === 'error';
 

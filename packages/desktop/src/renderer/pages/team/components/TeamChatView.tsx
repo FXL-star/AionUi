@@ -17,6 +17,7 @@ import type { TeamSendBoxRuntime } from './teamSendRuntime';
 import type { TeamRunReconcileResult, TeamRunViewState } from '../hooks/useTeamRunView';
 import TeamChatEmptyState from './TeamChatEmptyState';
 import { useTeamTabs } from '@/renderer/pages/team/hooks/TeamTabsContext';
+import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import { usePresetAssistantInfo } from '@/renderer/hooks/agent/usePresetAssistantInfo';
 import { resolveConversationBackend } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 
@@ -74,13 +75,15 @@ const AionrsTeamChat: React.FC<{
   loadedMcpServers,
   loadedMcpStatuses,
 }) => {
+  const teamPermission = useTeamPermission();
   const onSelectModel = useCallback(
     async (_provider: IProvider, modelName: string) => {
+      if (teamPermission?.readOnly) return false;
       const selected = { ..._provider, use_model: modelName } as TProviderWithModel;
       const ok = await ipcBridge.conversation.update.invoke({ id: conversation.id, updates: { model: selected } });
       return Boolean(ok);
     },
-    [conversation.id]
+    [conversation.id, teamPermission?.readOnly]
   );
 
   const modelSelection = useAionrsModelSelection({ initialModel: conversation.model, onSelectModel });

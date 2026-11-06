@@ -46,6 +46,7 @@ type ArchivedRow = {
   name: string;
   icon: React.ReactElement;
   updatedAt?: number;
+  readOnly?: boolean;
 };
 
 /** One archived project bucket. Ordinary chats are grouped into the synthetic no-project bucket. */
@@ -159,6 +160,7 @@ const ArchivedSettings: React.FC = () => {
         key,
         item_type: 'team',
         item_id: item.team_id,
+        readOnly: item.is_builtin,
         name: item.name,
         icon: <Peoples theme='outline' size='16' className='block leading-none text-t-secondary' />,
         updatedAt: item.updated_at,
@@ -209,7 +211,10 @@ const ArchivedSettings: React.FC = () => {
     return { archivedBlocks, total: seen.size };
   }, [data, extraPages, logos, t]);
 
-  const allRows = React.useMemo(() => archivedBlocks.flatMap((block) => block.rows), [archivedBlocks]);
+  const allRows = React.useMemo(
+    () => archivedBlocks.flatMap((block) => block.rows).filter((row) => !row.readOnly),
+    [archivedBlocks]
+  );
 
   const selectedRows = React.useMemo(() => allRows.filter((row) => selectedKeys.has(row.key)), [allRows, selectedKeys]);
   const allRowsSelected = allRows.length > 0 && allRows.every((row) => selectedKeys.has(row.key));
@@ -224,6 +229,7 @@ const ArchivedSettings: React.FC = () => {
   }, [allRows]);
 
   const setRowSelected = React.useCallback((row: ArchivedRow, checked: boolean) => {
+    if (row.readOnly) return;
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (checked) {
@@ -236,6 +242,7 @@ const ArchivedSettings: React.FC = () => {
   }, []);
 
   const toggleRowSelected = React.useCallback((row: ArchivedRow) => {
+    if (row.readOnly) return;
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(row.key)) {
@@ -251,6 +258,7 @@ const ArchivedSettings: React.FC = () => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       for (const row of block.rows) {
+        if (row.readOnly) continue;
         if (checked) {
           next.add(row.key);
         } else {
@@ -325,6 +333,7 @@ const ArchivedSettings: React.FC = () => {
 
   const handleDelete = React.useCallback(
     (row: ArchivedRow) => {
+      if (row.readOnly) return;
       Modal.confirm({
         title: t('settings.archived.deleteConfirmTitle'),
         content: t('settings.archived.deleteConfirmContent', { name: row.name }),
@@ -418,6 +427,7 @@ const ArchivedSettings: React.FC = () => {
     >
       {selectionMode ? (
         <Checkbox
+          disabled={row.readOnly}
           checked={selectedKeys.has(row.key)}
           onClick={(event) => event.stopPropagation()}
           onChange={(checked) => setRowSelected(row, checked)}
@@ -440,6 +450,7 @@ const ArchivedSettings: React.FC = () => {
             type='text'
             size='small'
             status='danger'
+            disabled={row.readOnly}
             icon={<DeleteOne theme='outline' size='14' />}
             onClick={() => handleDelete(row)}
           />

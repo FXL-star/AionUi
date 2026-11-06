@@ -82,11 +82,12 @@ const AionrsHeaderModelSelector: React.FC<{ conversation_id: string; initialMode
   const teamPermission = useTeamPermission();
   const onSelectModel = useCallback(
     async (_provider: IProvider, modelName: string) => {
+      if (teamPermission?.readOnly) return false;
       const selected = { ..._provider, use_model: modelName } as TProviderWithModel;
       const ok = await ipcBridge.conversation.update.invoke({ id: conversation_id, updates: { model: selected } });
       return Boolean(ok);
     },
-    [conversation_id]
+    [conversation_id, teamPermission?.readOnly]
   );
   const modelSelection = useAionrsModelSelection({ initialModel, onSelectModel });
   const runtimeConfig = useAcpConfigOptions({
@@ -192,6 +193,7 @@ const teamWarmupPhaseAvailability = (phase: TeamWarmupPhase): TeamContextResetAv
     case 'ready':
       return 'ready';
     case 'error':
+    case 'model_required':
       return 'failed';
     case 'warming':
       return 'initializing';
@@ -449,7 +451,7 @@ const AssistantChatSlot: React.FC<{
         />
         <div className='flex items-center gap-8px shrink-0'>
           {conversation && <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />}
-          {!isMobile && assistant.conversation_id && !isAionrs && isAcpLike && (
+          {!teamPermission?.readOnly && !isMobile && assistant.conversation_id && !isAionrs && isAcpLike && (
             <div className='min-w-0 max-w-140px [&_button]:max-w-full [&_button_span]:truncate'>
               <AcpModelSelector
                 key={assistant.conversation_id}
@@ -486,7 +488,7 @@ const AssistantChatSlot: React.FC<{
               />
             </div>
           )}
-          {!isMobile && isAionrs && assistant.conversation_id && (
+          {!teamPermission?.readOnly && !isMobile && isAionrs && assistant.conversation_id && (
             <div className='min-w-0 max-w-140px [&_button]:max-w-full [&_button_span]:truncate'>
               <AionrsHeaderModelSelector
                 key={assistant.conversation_id}
@@ -539,6 +541,7 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
 }) => {
   const { t } = useTranslation();
   useActiveLease({ type: 'team', id: team.id });
+  const { mutate: mutateCache } = useSWRConfig();
   const { assistants, activeSlotId, switchTab, colorOf, colorOfConversation } = useTeamTabs();
   const [, messageContext] = Message.useMessage({ maxCount: 1 });
 
@@ -565,6 +568,14 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
     () => assistants.map((assistant) => assistant.conversation_id).filter(Boolean),
     [assistants]
   );
+  useEffect(() => {
+    if (!team.is_builtin || warmupPhase !== 'ready') return;
+    // Initial GETs can precede the model initialization performed by warmup.
+    // Refresh every member so the send box sees the newly persisted model.
+    void Promise.all(allConversationIds.map((id) => mutateCache(['team-conversation', id]))).catch((error) => {
+      console.error('Failed to refresh built-in team conversations after warmup:', error);
+    });
+  }, [allConversationIds, mutateCache, team.is_builtin, warmupPhase]);
   const runtimeStartingConversationIds = useMemo(
     () =>
       new Set(
@@ -793,6 +804,7 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
   return (
     <TeamPermissionProvider
       team_id={team.id}
+      readOnly={team.is_builtin}
       isLeaderAgent={isLeaderAssistant}
       leaderConversationId={leaderConversationId}
       allConversationIds={allConversationIds}
@@ -812,7 +824,7 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
           workspacePath={effectiveWorkspace}
           isTemporaryWorkspace={isTeamWorkspaceTemporary}
           workspacePreferenceKey={team.id}
-          onRenameTitle={onRenameTeam}
+          onRenameTitle={team.is_builtin ? undefined : onRenameTeam}
           headerExtra={assistants.length > 1 ? <TeamViewToggle value={viewMode} onChange={setViewMode} /> : undefined}
           headerLeading={
             <span className='inline-flex w-16px h-16px items-center justify-center shrink-0 leading-none text-t-primary'>
@@ -958,7 +970,12 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
 
 const TeamPage: React.FC<Props> = ({ team }) => {
   const { t } = useTranslation();
-  const { phase: warmupPhase, runtimeStatus: warmupRuntimeStatus, retry: retryWarmup } = useTeamWarmup(team.id);
+  const leaderBackend = team.assistants.find((assistant) => assistant.role === 'leader')?.assistant_backend;
+  const {
+    phase: warmupPhase,
+    runtimeStatus: warmupRuntimeStatus,
+    retry: retryWarmup,
+  } = useTeamWarmup(team.id, leaderBackend);
   const { statusMap, membershipMutationBusy, addAssistant, renameAssistant, removeAssistant, mutateTeam } =
     useTeamSession(team, warmupPhase);
   const { user } = useAuth();
@@ -967,7 +984,7 @@ const TeamPage: React.FC<Props> = ({ team }) => {
 
   const handleRemoveAssistantWithConfirm = useCallback(
     (slot_id: string) => {
-      if (membershipMutationBusy) return;
+      if (team.is_builtin || membershipMutationBusy) return;
 
       const doRemoveAssistant = async () => {
         try {
@@ -991,11 +1008,12 @@ const TeamPage: React.FC<Props> = ({ team }) => {
         onOk: doRemoveAssistant,
       });
     },
-    [membershipMutationBusy, statusMap, removeAssistant, t]
+    [team.is_builtin, membershipMutationBusy, statusMap, removeAssistant, t]
   );
 
   const handleRenameTeam = useCallback(
     async (new_name: string): Promise<boolean> => {
+      if (team.is_builtin) return false;
       try {
         await ipcBridge.team.renameTeam.invoke({ id: team.id, name: new_name });
         await mutateTeam();
@@ -1006,7 +1024,7 @@ const TeamPage: React.FC<Props> = ({ team }) => {
         return false;
       }
     },
-    [team.id, mutateTeam, globalMutate, user]
+    [team.id, team.is_builtin, mutateTeam, globalMutate, user]
   );
 
   return (
@@ -1015,6 +1033,7 @@ const TeamPage: React.FC<Props> = ({ team }) => {
       statusMap={statusMap}
       defaultActiveSlotId={defaultSlotId}
       team_id={team.id}
+      readOnly={team.is_builtin}
       addAssistant={addAssistant}
       renameAssistant={renameAssistant}
       removeAssistant={handleRemoveAssistantWithConfirm}

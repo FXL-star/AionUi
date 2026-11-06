@@ -127,7 +127,7 @@ const AcpSendBox: React.FC<{
   const { t } = useTranslation();
   const teamPermission = useTeamPermission();
   // In team mode, all agents show the permission mode selector (members don't propagate)
-  const showModeSelector = true;
+  const showModeSelector = !teamPermission?.readOnly;
   const isLeaderInTeam = teamPermission && conversation_id === teamPermission.leaderConversationId;
   const { checkAndUpdateTitle } = useAutoTitle();
   const { atPath, uploadFile, setAtPath, setUploadFile, content, setContent } = useSendBoxDraft(conversation_id);
@@ -676,10 +676,13 @@ Please check your local CLI tool authentication status`,
       });
     }
 
-    return entries;
+    return teamPermission?.readOnly
+      ? entries.filter((entry) => !['model', 'permission', 'thought-level'].includes(entry.key))
+      : entries;
   }, [
     attachEntries,
     canSwitchModel,
+    teamPermission?.readOnly,
     currentMode,
     handleSheetModeChange,
     handleThoughtLevelSetOption,

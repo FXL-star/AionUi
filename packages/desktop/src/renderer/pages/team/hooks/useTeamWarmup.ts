@@ -4,8 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Message } from '@arco-design/web-react';
+import { useTranslation } from 'react-i18next';
 import { ipcBridge } from '@/common';
+import { hasAvailableModels } from '@/renderer/pages/guid/utils/modelUtils';
 import type {
   ITeamAgentRuntimeStatusEvent,
   ITeamSessionStatusChangedEvent,
@@ -20,7 +23,7 @@ import type {
  * ready/failed transitions; the ensure promise is the fallback when an event
  * was missed. Member runtime events provide per-slot diagnostic detail only.
  */
-export type TeamWarmupPhase = 'warming' | 'ready' | 'error';
+export type TeamWarmupPhase = 'warming' | 'ready' | 'error' | 'model_required';
 
 /** Runtime state and optional failure reason for one member. */
 export type TeamWarmupMemberState = {
@@ -35,10 +38,15 @@ export type TeamWarmupState = {
   retry: () => void;
 };
 
-export function useTeamWarmup(team_id: string): TeamWarmupState {
+export function useTeamWarmup(team_id: string, leaderBackend?: string): TeamWarmupState {
+  const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
+
   const [phase, setPhase] = useState<TeamWarmupPhase>(team_id ? 'warming' : 'ready');
   const [runtimeStatus, setRuntimeStatus] = useState<Map<string, TeamWarmupMemberState>>(() => new Map());
   const [ensureAttempt, setEnsureAttempt] = useState(0);
+  const promptedMissingModelTeamRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!team_id) {
@@ -87,19 +95,32 @@ export function useTeamWarmup(team_id: string): TeamWarmupState {
 
     let cancelled = false;
     setPhase('warming');
-    ipcBridge.team.ensureSession
-      .invoke({ team_id })
-      .then(() => {
+    void (async () => {
+      try {
+        if (leaderBackend === 'aionrs') {
+          const providers = (await ipcBridge.mode.listProviders.invoke()) ?? [];
+          // Only provider-backed leaders require an app-configured model. Other
+          // runtimes resolve their model independently and must keep starting.
+          if (!providers.some((provider) => provider.enabled !== false && hasAvailableModels(provider))) {
+            if (!cancelled && promptedMissingModelTeamRef.current !== team_id) {
+              promptedMissingModelTeamRef.current = team_id;
+              setPhase('model_required');
+              Message.warning(tRef.current('conversation.noModelConfigured'));
+            }
+            return;
+          }
+        }
+        await ipcBridge.team.ensureSession.invoke({ team_id });
         if (!cancelled) setPhase('ready');
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setPhase('error');
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [team_id, ensureAttempt]);
+  }, [team_id, ensureAttempt, leaderBackend]);
 
   const retry = useCallback(() => {
     if (!team_id) return;

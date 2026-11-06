@@ -122,7 +122,9 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
   },
 }));
 
-vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({ default: () => null }));
+vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({
+  default: () => <div data-testid='permission-selector' />,
+}));
 vi.mock('@/renderer/components/chat/CommandQueuePanel', () => ({ default: () => null }));
 vi.mock('@/renderer/components/chat/MobileActionSheet', () => ({
   default: () => null,
@@ -303,6 +305,12 @@ const modelSelection = {
 } as AionrsModelSelection;
 
 describe('AionrsSendBox', () => {
+  it('hides permission changes for built-in teams while leaving the send box available', () => {
+    useTeamPermissionMock.mockReturnValue({ readOnly: true, warmupSession: vi.fn(async () => {}) });
+    render(<AionrsSendBox conversation_id='conv-1' modelSelection={modelSelection} />);
+    expect(screen.queryByTestId('permission-selector')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'send' })).not.toBeDisabled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     ensureConversationRuntimeMock.mockResolvedValue({ recovered: false, config_options: [], runtime: null });

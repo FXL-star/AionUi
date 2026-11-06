@@ -3,7 +3,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import type { TChatConversation } from '@/common/config/storage';
+import { SWRConfig } from 'swr';
+import type { TChatConversation, TProviderWithModel } from '@/common/config/storage';
 import type { TTeam } from '@/common/types/team/teamTypes';
 
 const {
@@ -127,8 +128,16 @@ vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
 
 vi.mock('@/renderer/pages/conversation/components/ChatLayout', () => ({
   __esModule: true,
-  default: ({ children, tabsSlot }: { children: React.ReactNode; tabsSlot?: React.ReactNode }) => (
-    <div>
+  default: ({
+    children,
+    tabsSlot,
+    onRenameTitle,
+  }: {
+    children: React.ReactNode;
+    tabsSlot?: React.ReactNode;
+    onRenameTitle?: unknown;
+  }) => (
+    <div data-testid='team-layout' data-can-rename={Boolean(onRenameTitle)}>
       <div data-testid='team-tabs-slot'>{tabsSlot}</div>
       <div data-testid='team-chat-layout'>{children}</div>
     </div>
@@ -171,7 +180,9 @@ vi.mock('@/renderer/pages/conversation/platforms/aionrs/AionrsModelSelector', ()
 
 vi.mock('@/renderer/pages/team/components/TeamChatView', () => ({
   __esModule: true,
-  default: ({ conversation: c }: { conversation: TChatConversation }) => <div data-testid={`team-chat-view-${c.id}`} />,
+  default: ({ conversation: c }: { conversation: TChatConversation }) => (
+    <div data-testid={`team-chat-view-${c.id}`} data-model={c.type === 'aionrs' ? (c.model?.use_model ?? '') : ''} />
+  ),
 }));
 
 // Isolate TeamPage from the workspace sider: the real ChatSlider subtree pulls
@@ -196,6 +207,51 @@ import { ipcBridge } from '@/common';
 import TeamPage from '@/renderer/pages/team/TeamPage';
 
 describe('TeamPage teammate warmup wiring', () => {
+  it('refreshes models for all built-in members when the initial reads finish before warmup', async () => {
+    let modelReady = false;
+    let finishWarmup!: () => void;
+    ensureSessionMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishWarmup = resolve;
+      })
+    );
+    getConversationOrNullMock.mockImplementation(async (id: string) =>
+      conversation({
+        id,
+        type: 'aionrs',
+        model: modelReady ? ({ id: 'provider-1', use_model: 'test-model' } as TProviderWithModel) : undefined,
+      })
+    );
+    render(
+      <SWRConfig value={{ provider: () => new Map() }}>
+        <MemoryRouter>
+          <TeamPage team={{ ...team(), is_builtin: true }} />
+        </MemoryRouter>
+      </SWRConfig>
+    );
+    expect(await screen.findByTestId('team-chat-view-member-conv')).toHaveAttribute('data-model', '');
+    modelReady = true;
+    await act(async () => {
+      finishWarmup();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('team-chat-view-member-conv')).toHaveAttribute('data-model', 'test-model');
+      expect(screen.getByTestId('team-chat-view-leader-conv')).toHaveAttribute('data-model', 'test-model');
+    });
+  });
+
+  it('hides built-in configuration controls while keeping member chats and runtime actions', async () => {
+    ensureSessionMock.mockResolvedValue(undefined);
+    render(
+      <MemoryRouter>
+        <TeamPage team={{ ...team(), is_builtin: true }} />
+      </MemoryRouter>
+    );
+    await screen.findByTestId('team-chat-view-member-conv');
+    expect(screen.queryAllByTestId(/^acp-model-selector-/)).toHaveLength(0);
+    expect(screen.getByTestId('team-layout')).toHaveAttribute('data-can-rename', 'false');
+    expect(screen.getByTestId('runtime-restart-leader-conv')).toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     acpSelectorPropsBySlot.clear();
@@ -492,6 +548,7 @@ function conversation(overrides?: Partial<TChatConversation>): TChatConversation
 function team(): TTeam {
   return {
     id: 'team-1',
+    is_builtin: false,
     user_id: 'user-1',
     name: 'Warmup Team',
     workspace: '/tmp/team',
