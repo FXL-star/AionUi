@@ -1,5 +1,5 @@
 import { ipcBridge } from '@/common';
-import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
 import { createTeamConfigOptionsPort, type TeamConfigOptionsPort } from './teamConfigOptions';
 
 type TeamPermissionContextValue = {
@@ -30,6 +30,7 @@ export const TeamPermissionProvider: React.FC<{
   leaderConversationId: string;
   allConversationIds: string[];
   runtimeStartingConversationIds: ReadonlySet<string>;
+  warmupSession: () => Promise<void>;
 }> = ({
   children,
   team_id,
@@ -38,9 +39,8 @@ export const TeamPermissionProvider: React.FC<{
   leaderConversationId,
   allConversationIds,
   runtimeStartingConversationIds,
+  warmupSession,
 }) => {
-  const warmupPromiseRef = useRef<Promise<void> | null>(null);
-
   const propagateMode = useCallback(
     (mode: string) => {
       if (readOnly) return;
@@ -51,21 +51,6 @@ export const TeamPermissionProvider: React.FC<{
     },
     [readOnly, team_id]
   );
-
-  const warmupSession = useCallback((): Promise<void> => {
-    if (warmupPromiseRef.current) {
-      return warmupPromiseRef.current;
-    }
-
-    const promise = ipcBridge.team.ensureSession.invoke({ team_id });
-    // Fire-and-forget callers only use warmup as a hint; attach a no-op catch
-    // so rejected warmups do not surface as unhandled promise rejections.
-    void promise.catch(() => {});
-    warmupPromiseRef.current = promise.finally(() => {
-      warmupPromiseRef.current = null;
-    });
-    return warmupPromiseRef.current;
-  }, [team_id]);
 
   const configOptionsPort = useMemo(
     () =>

@@ -101,5 +101,7 @@ async function resolveGeminiDefaultModel(): Promise<string> {
 }
 
 async function resolveAionrsDefaultModel(): Promise<string> {
-  return 'default';
+  // Aionrs requires an actual provider model. An empty value leaves the team
+  // member unconfigured instead of persisting a placeholder as a model ID.
+  return '';
 }

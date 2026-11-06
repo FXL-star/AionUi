@@ -142,6 +142,8 @@ const AionrsSendBox: React.FC<{
   const { checkAndUpdateTitle } = useAutoTitle();
   const { current_model } = modelSelection;
   const teamPermission = useTeamPermission();
+  const isTeamConversation = Boolean(teamPermission);
+  const teamWarmupSession = teamPermission?.warmupSession;
   const propagateMode = teamPermission?.propagateMode;
 
   const { thought, running, turnStartedAtMs, setActiveMsgId, setWaitingResponse, resetState } = useAionrsMessage(
@@ -172,12 +174,12 @@ const AionrsSendBox: React.FC<{
     if (teamPermission) return;
   }, [teamPermission]);
   const prepareRuntimeSync = useCallback(async () => {
-    if (teamPermission) {
-      await teamPermission.warmupSession();
+    if (teamWarmupSession) {
+      await teamWarmupSession();
       return;
     }
     await ensureConversationRuntime(conversation_id);
-  }, [conversation_id, teamPermission]);
+  }, [conversation_id, teamWarmupSession]);
   const runtimeConfig = useAcpConfigOptions({
     conversation_id,
     prepareRuntime: prepareRuntimeConfig,
@@ -201,9 +203,11 @@ const AionrsSendBox: React.FC<{
         setAgentWarmed(true);
       })
       .catch((error) => {
+        // The page-level warmup owns the missing-model warning and failure overlay.
+        if (isTeamConversation) return;
         Message.error(getConversationRuntimeWorkspaceErrorMessage(error, t));
       });
-  }, [conversation_id, prepareRuntimeSync, t]);
+  }, [conversation_id, prepareRuntimeSync, isTeamConversation, t]);
 
   const slash_commands = useSlashCommands(conversation_id, {
     conversation_type: 'aionrs',
@@ -253,11 +257,11 @@ const AionrsSendBox: React.FC<{
 
   const executeCommand = useCallback(
     async ({ input, files, sessions }: Pick<ConversationCommandQueueItem, 'input' | 'files' | 'sessions'>) => {
-      if (teamPermission) await teamPermission.warmupSession();
       if (!current_model?.use_model) {
         Message.warning(t('conversation.chat.noModelSelected'));
         throw new Error('No model selected');
       }
+      if (teamWarmupSession) await teamWarmupSession();
 
       // The message body is plain user text; the backend resolves each
       // ChatFileRef to an absolute path and injects the [[AION_FILES]] marker at
@@ -321,6 +325,7 @@ const AionrsSendBox: React.FC<{
       setWaitingResponse,
       t,
       teamPermission,
+      teamWarmupSession,
       teamSendMessage,
     ]
   );

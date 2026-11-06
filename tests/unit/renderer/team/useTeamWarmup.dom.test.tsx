@@ -97,6 +97,25 @@ describe('useTeamWarmup', () => {
     expect(ensureSessionMock).not.toHaveBeenCalled();
   });
 
+  it('rejects shared send-box warmup when a provider model is required', async () => {
+    listProvidersMock.mockResolvedValue([]);
+    const { result } = renderTeamWarmup('team-1', 'aionrs');
+
+    await waitFor(() => expect(result.current.phase).toBe('model_required'));
+    await expect(result.current.warmupSession()).rejects.toThrow('TEAM_MODEL_REQUIRED');
+  });
+
+  it('keeps model_required on retry and suppresses duplicate missing-model warnings', async () => {
+    listProvidersMock.mockResolvedValue([]);
+    const { result } = renderTeamWarmup('team-1', 'aionrs');
+    await waitFor(() => expect(result.current.phase).toBe('model_required'));
+
+    act(() => result.current.retry());
+
+    await waitFor(() => expect(result.current.phase).toBe('model_required'));
+    expect(messageWarningMock).toHaveBeenCalledTimes(1);
+  });
+
   it('retains the provider-backed startup error when the provider lookup fails', async () => {
     listProvidersMock.mockRejectedValue(new Error('provider lookup failed'));
     ensureSessionMock.mockResolvedValue(undefined);

@@ -25,6 +25,8 @@ import type {
  */
 export type TeamWarmupPhase = 'warming' | 'ready' | 'error' | 'model_required';
 
+const TEAM_MODEL_REQUIRED_ERROR = 'TEAM_MODEL_REQUIRED';
+
 /** Runtime state and optional failure reason for one member. */
 export type TeamWarmupMemberState = {
   status: TeamAgentRuntimeStatus;
@@ -35,6 +37,8 @@ export type TeamWarmupState = {
   phase: TeamWarmupPhase;
   /** Runtime state by slot id. A missing entry means warmup has not started for that member. */
   runtimeStatus: Map<string, TeamWarmupMemberState>;
+  /** Shared by the page and every send box so only one entry point can start a team. */
+  warmupSession: () => Promise<void>;
   retry: () => void;
 };
 
@@ -47,6 +51,8 @@ export function useTeamWarmup(team_id: string, leaderBackend?: string): TeamWarm
   const [runtimeStatus, setRuntimeStatus] = useState<Map<string, TeamWarmupMemberState>>(() => new Map());
   const [ensureAttempt, setEnsureAttempt] = useState(0);
   const promptedMissingModelTeamRef = useRef<string | undefined>(undefined);
+  const warmupPromiseRef = useRef<Promise<void> | null>(null);
+  const warmupRevisionRef = useRef(0);
 
   useEffect(() => {
     if (!team_id) {
@@ -91,36 +97,55 @@ export function useTeamWarmup(team_id: string, leaderBackend?: string): TeamWarm
   }, [team_id]);
 
   useEffect(() => {
+    warmupRevisionRef.current += 1;
+    warmupPromiseRef.current = null;
     if (!team_id) return;
 
     let cancelled = false;
+    const revision = warmupRevisionRef.current;
     setPhase('warming');
-    void (async () => {
+    const promise = (async () => {
       try {
         if (leaderBackend === 'aionrs') {
           const providers = (await ipcBridge.mode.listProviders.invoke()) ?? [];
           // Only provider-backed leaders require an app-configured model. Other
           // runtimes resolve their model independently and must keep starting.
           if (!providers.some((provider) => provider.enabled !== false && hasAvailableModels(provider))) {
-            if (!cancelled && promptedMissingModelTeamRef.current !== team_id) {
-              promptedMissingModelTeamRef.current = team_id;
+            if (!cancelled) {
               setPhase('model_required');
-              Message.warning(tRef.current('conversation.noModelConfigured'));
+              if (promptedMissingModelTeamRef.current !== team_id) {
+                promptedMissingModelTeamRef.current = team_id;
+                Message.warning(tRef.current('conversation.noModelConfigured'));
+              }
             }
-            return;
+            throw new Error(TEAM_MODEL_REQUIRED_ERROR);
           }
         }
         await ipcBridge.team.ensureSession.invoke({ team_id });
         if (!cancelled) setPhase('ready');
-      } catch {
-        if (!cancelled) setPhase('error');
+      } catch (error) {
+        if (!cancelled && (!(error instanceof Error) || error.message !== TEAM_MODEL_REQUIRED_ERROR)) {
+          setPhase('error');
+        }
+        throw error;
       }
     })();
+    void promise.catch(() => {});
+    const sharedPromise = promise.finally(() => {
+      if (warmupRevisionRef.current === revision) warmupPromiseRef.current = sharedPromise;
+    });
+    void sharedPromise.catch(() => {});
+    warmupPromiseRef.current = sharedPromise;
 
     return () => {
       cancelled = true;
     };
   }, [team_id, ensureAttempt, leaderBackend]);
+
+  const warmupSession = useCallback((): Promise<void> => {
+    if (!warmupPromiseRef.current) return Promise.reject(new Error('TEAM_WARMUP_NOT_READY'));
+    return warmupPromiseRef.current;
+  }, []);
 
   const retry = useCallback(() => {
     if (!team_id) return;
@@ -128,5 +153,5 @@ export function useTeamWarmup(team_id: string, leaderBackend?: string): TeamWarm
     setEnsureAttempt((attempt) => attempt + 1);
   }, [team_id]);
 
-  return { phase, runtimeStatus, retry };
+  return { phase, runtimeStatus, warmupSession, retry };
 }

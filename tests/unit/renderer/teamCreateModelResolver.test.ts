@@ -133,12 +133,12 @@ describe('resolveDefaultTeamAgentModel', () => {
     ).resolves.toBe('');
   });
 
-  it('keeps the default placeholder for aionrs assistants', async () => {
+  it('does not persist the default placeholder as an aionrs model', async () => {
     await expect(
       resolveDefaultTeamAgentModel({
         assistant_backend: 'aionrs',
       })
-    ).resolves.toBe('default');
+    ).resolves.toBe('');
   });
 
   it('keeps the default placeholder for other ACP backends such as claude', async () => {

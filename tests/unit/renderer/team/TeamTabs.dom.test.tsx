@@ -113,6 +113,7 @@ describe('TeamTabs', () => {
           leaderConversationId='lead-conv'
           allConversationIds={['lead-conv']}
           runtimeStartingConversationIds={new Set()}
+          warmupSession={() => ipcBridge.team.ensureSession.invoke({ team_id: 'team-1' })}
         >
           {children}
         </TeamPermissionProvider>

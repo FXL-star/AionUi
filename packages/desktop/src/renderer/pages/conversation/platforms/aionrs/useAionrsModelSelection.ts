@@ -25,10 +25,11 @@ export const useAionrsModelSelection = ({
   initialModel,
   onSelectModel,
 }: UseAionrsModelSelectionOptions): AionrsModelSelection => {
-  const [current_model, setCurrentModel] = useState<TProviderWithModel | undefined>(initialModel);
+  const resolvedInitialModel = initialModel?.use_model === 'default' ? undefined : initialModel;
+  const [current_model, setCurrentModel] = useState<TProviderWithModel | undefined>(resolvedInitialModel);
 
   useEffect(() => {
-    setCurrentModel(initialModel);
+    setCurrentModel(initialModel?.use_model === 'default' ? undefined : initialModel);
   }, [initialModel?.id, initialModel?.use_model]);
 
   const { providers: allProviders, getAvailableModels, formatModelLabel } = useModelProviderList();

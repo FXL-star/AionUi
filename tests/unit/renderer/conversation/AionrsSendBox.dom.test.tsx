@@ -388,6 +388,44 @@ describe('AionrsSendBox', () => {
     expect(ensureConversationRuntimeMock).not.toHaveBeenCalled();
   });
 
+  it('does not restart warmup when the team context changes around the same session callback', async () => {
+    const warmupSession = vi.fn().mockResolvedValue(undefined);
+    useTeamPermissionMock.mockReturnValue({ readOnly: false, warmupSession });
+    const { rerender } = render(<AionrsSendBox conversation_id='conv-1' modelSelection={modelSelection} />);
+    await waitFor(() => expect(warmupSession).toHaveBeenCalledTimes(1));
+
+    useTeamPermissionMock.mockReturnValue({ readOnly: true, warmupSession });
+    rerender(<AionrsSendBox conversation_id='conv-1' modelSelection={modelSelection} />);
+
+    expect(warmupSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses duplicate startup errors from team warmup', async () => {
+    const warmupSession = vi.fn().mockRejectedValue(new Error('startup failed'));
+    useTeamPermissionMock.mockReturnValue({ readOnly: false, warmupSession });
+
+    render(<AionrsSendBox conversation_id='conv-1' modelSelection={modelSelection} />);
+
+    await waitFor(() => expect(warmupSession).toHaveBeenCalledTimes(1));
+    expect(Message.error).not.toHaveBeenCalled();
+  });
+
+  it('does not bypass missing-model validation by warming the team first', async () => {
+    const warmupSession = vi.fn().mockResolvedValue(undefined);
+    useTeamPermissionMock.mockReturnValue({ readOnly: false, warmupSession });
+    render(<AionrsSendBox conversation_id='conv-1' modelSelection={{ ...modelSelection, current_model: undefined }} />);
+    await waitFor(() => expect(warmupSession).toHaveBeenCalledTimes(1));
+    warmupSession.mockClear();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'send' }).click();
+    });
+
+    expect(warmupSession).not.toHaveBeenCalled();
+    expect(sendMessageInvokeMock).not.toHaveBeenCalled();
+    expect(Message.warning).toHaveBeenCalledWith('conversation.chat.noModelSelected');
+  });
+
   it('uses runtime ensure instead of legacy warmup for standalone runtime preparation', async () => {
     render(<AionrsSendBox conversation_id='conv-1' modelSelection={modelSelection} />);
 

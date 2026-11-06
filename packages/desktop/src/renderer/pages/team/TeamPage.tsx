@@ -61,6 +61,7 @@ type TeamPageContentProps = {
   team: TTeam;
   onRenameTeam: (new_name: string) => Promise<boolean>;
   warmupPhase: TeamWarmupPhase;
+  warmupSession: () => Promise<void>;
   warmupRuntimeStatus: Map<string, TeamWarmupMemberState>;
   onRetryWarmup: () => void;
 };
@@ -536,6 +537,7 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
   team,
   onRenameTeam,
   warmupPhase,
+  warmupSession,
   warmupRuntimeStatus,
   onRetryWarmup,
 }) => {
@@ -809,6 +811,7 @@ const TeamPageContent: React.FC<TeamPageContentProps> = ({
       leaderConversationId={leaderConversationId}
       allConversationIds={allConversationIds}
       runtimeStartingConversationIds={runtimeStartingConversationIds}
+      warmupSession={warmupSession}
     >
       <TeamIdentityProvider colorOfConversation={colorOfConversation}>
         {messageContext}
@@ -974,6 +977,7 @@ const TeamPage: React.FC<Props> = ({ team }) => {
   const {
     phase: warmupPhase,
     runtimeStatus: warmupRuntimeStatus,
+    warmupSession,
     retry: retryWarmup,
   } = useTeamWarmup(team.id, leaderBackend);
   const { statusMap, membershipMutationBusy, addAssistant, renameAssistant, removeAssistant, mutateTeam } =
@@ -1043,6 +1047,7 @@ const TeamPage: React.FC<Props> = ({ team }) => {
         team={team}
         onRenameTeam={handleRenameTeam}
         warmupPhase={warmupPhase}
+        warmupSession={warmupSession}
         warmupRuntimeStatus={warmupRuntimeStatus}
         onRetryWarmup={retryWarmup}
       />
