@@ -18,6 +18,7 @@ import {
 import { BUILTIN_IMAGE_GEN_NAME, type IMcpServer, type IProvider } from '@/common/config/storage';
 import { getBuiltinMcpScriptPath, type ProcessConfig as ProcessConfigType } from './initStorage';
 import { migrateAssistantsToBackend } from './migrateAssistants';
+import { buildSystemDefaultMcpServers } from './systemDefaultMcpServers';
 
 type ConfigFile = typeof ProcessConfigType;
 type MigrationStepResult = boolean;
@@ -200,6 +201,7 @@ function buildBuiltinBrowserServer(): McpImportServer {
   };
 }
 
+// 定义构建系统内置 MCP 服务器的函数。用于在数据库中确保存在默认的 MCP 服务器配置，包括图像生成和浏览器控制。
 function buildDefaultMcpServers(): McpImportServer[] {
   const chromeConfig = {
     command: 'npx',
@@ -207,6 +209,7 @@ function buildDefaultMcpServers(): McpImportServer[] {
   };
 
   return [
+    ...buildSystemDefaultMcpServers(),
     {
       name: BUILTIN_CHROME_DEVTOOLS_NAME,
       description: 'Default MCP server: chrome-devtools',

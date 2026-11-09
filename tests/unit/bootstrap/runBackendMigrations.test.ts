@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IMAGE_GEN_ENV_KEYS } from '@/common/config/imageGenerationMcpEnv';
+import { BUILTIN_BROWSER_MCP_NAME } from '@/common/config/constants';
 import { BUILTIN_IMAGE_GEN_NAME, type IMcpServer, type IProvider } from '@/common/config/storage';
 import { resolveImageGenerationMigrationConfig, runBackendMigrations } from '@/process/utils/runBackendMigrations';
+import { buildSystemDefaultMcpServers } from '@/process/utils/systemDefaultMcpServers';
 
 const {
   batchImportServersMock,
@@ -100,6 +102,17 @@ const configFile = {
   get: configFileGetMock,
   set: configFileSetMock,
 };
+
+const fakeMcpServer = (name: string): IMcpServer => ({
+  id: name,
+  name,
+  enabled: false,
+  builtin: true,
+  transport: { type: 'stdio', command: 'node' },
+  created_at: 1,
+  updated_at: 1,
+  original_json: '{}',
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -214,5 +227,41 @@ describe('runBackendMigrations', () => {
       'yes',
       'yes'
     );
+  });
+
+  it('imports system default MCP servers that are missing from the database', async () => {
+    listServersMock.mockResolvedValue([imageServer()]);
+
+    await runBackendMigrations(configFile as never);
+
+    const imported = batchImportServersMock.mock.calls[0][0].servers as Array<{ name: string }>;
+    expect(imported.map((server) => server.name)).toEqual([
+      'tradesparq',
+      'waimaogongshe',
+      'data-search',
+      'search-data',
+      'mcp-gateway-test1',
+      'chrome-devtools',
+      BUILTIN_BROWSER_MCP_NAME,
+    ]);
+  });
+
+  it('does not re-import system default MCP servers that already exist by name', async () => {
+    const existingDefaults = buildSystemDefaultMcpServers().map((server) => {
+      server.id = server.name;
+      server.created_at = 1;
+      server.updated_at = 1;
+      return server;
+    });
+    listServersMock.mockResolvedValue([
+      imageServer(),
+      ...existingDefaults,
+      fakeMcpServer('chrome-devtools'),
+      fakeMcpServer(BUILTIN_BROWSER_MCP_NAME),
+    ]);
+
+    await runBackendMigrations(configFile as never);
+
+    expect(batchImportServersMock).not.toHaveBeenCalled();
   });
 });
